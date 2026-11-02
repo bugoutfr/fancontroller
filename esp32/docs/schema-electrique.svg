@@ -185,6 +185,7 @@
   <text x="1017" y="1073" class="signal">TACH2</text>
   <text x="1217" y="1073" class="signal">TACH3</text>
   <text x="1417" y="1073" class="signal">TACH4</text>
+  <path d="M850 1082V1110 M1050 1082V1110 M1250 1082V1110 M1450 1082V1110" class="wire"/>
   <text x="817" y="1130" class="small">GPIO13</text>
   <text x="1017" y="1130" class="small">GPIO34</text>
   <text x="1217" y="1130" class="small">GPIO14</text>
