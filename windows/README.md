@@ -86,33 +86,105 @@ Aucune preview. Pas de bibliothèque BLE ni MVVM supplémentaire : API Windows,
    Ce bouton exige un brouillon identique à la configuration lue :
    appliquer ou abandonner d'abord les modifications locales.
    Le dirty **local** et le dirty **RAM distante / NVS** sont distincts.
-7. **Relire l'état distant** conserve le brouillon. **Remplacer le brouillon
-   par la dernière lecture** l'abandonne explicitement, sans écriture BLE.
-   **Restaurer les valeurs d'usine en RAM** envoie `defaults` et remplace
-   le brouillon après relecture ; aucune sauvegarde NVS implicite.
+7. **Annuler les modifications** remet les champs a la derniere configuration
+   lue sur l'ESP32, sans ecriture BLE. La configuration est lue automatiquement
+   a chaque connexion. Les controles techniques de relecture et de remise
+   a zero ne sont plus exposes dans l'interface.
 
 Une application de six commandes n'est **pas atomique**. En cas de rupture,
 certaines modifications peuvent avoir pris effet sans réponse. Toute erreur
 GATT/protocole, annulation en vol ou expiration ferme et invalide la session.
-Une reconnexion explicite relit l'état réel et **conserve** le brouillon
+Une reconnexion relit l'état réel et **conserve** le brouillon
 préexistant, désormais éventuellement différent. Vérifier/reconcilier avant
-de réappliquer ; aucun retry d'écriture ni reconnexion automatique.
+de réappliquer ; aucun retry d'écriture.
 Le brouillon est conservé pendant les déconnexions, pas après fermeture du logiciel.
+
+### Connexion et reconnexion automatiques
+
+Apres une connexion et une lecture initiale reussies, l'adresse du controleur
+est memorisee dans `%LOCALAPPDATA%\FanController\last-device.txt`. Au prochain
+lancement, seul ce controleur est reconnecte automatiquement, et uniquement
+s'il est toujours appaire dans Windows. Aucun autre appareil n'est choisi,
+meme s'il est le seul detecte ; le premier choix reste manuel.
+
+Apres une perte de liaison, les tentatives continuent tant que l'application
+tourne, avec delais progressifs de 2 a 30 secondes (plafond 30 s entre les
+tentatives, en plus du temps de connexion). Elles n'ouvrent jamais un nouvel
+appairage. La reconnexion abonne TX et relit configuration/statut, sans envoyer
+de `set_profile`, `set_fan`, `save` ou `defaults`. Une ecriture interrompue
+n'est jamais rejouee : verifier l'etat relu et le brouillon avant de reappliquer.
+
+Le formulaire recherche/appairage est masque une fois connecte ; il reste
+accessible si la connexion echoue, si le controleur est absent ou s'il n'est
+plus appaire. **Deconnecter / suspendre la reconnexion** interrompt les
+tentatives jusqu'a un clic sur Connecter ou au prochain lancement.
+Lancer une recherche manuelle suspend aussi les tentatives pour ne pas
+concurrencer le choix d'un autre appareil.
 
 ### Interface, courbes et arriere-plan
 
-- **Tableau de bord** : mesures en direct et version du firmware.
+Les trois onglets partagent les memes marges de contenu. Leurs zones de
+defilement occupent toute la largeur : les scrollbars sont au bord droit
+de la fenetre et ne sont pas placees dans les marges des cartes.
+
+- **Tableau de bord** : mesures en direct, securites et version du firmware.
+  Les commandes de connexion sont dans Parametres, pas sur le tableau de bord.
 - **Parametres** : courbes par sonde et modes auto/fixe par ventilateur.
+  L'encart Connexion affiche le nom fourni par Windows, l'adresse BLE et
+  la puissance du signal RSSI en dBm, recue par l'ESP32 sur la liaison active
+  (actualisee a chaque lecture des mesures, toutes les deux secondes environ).
+  Cette mesure exige le firmware **1.1.3 ou ulterieur**. Plus la valeur est
+  proche de zero, plus le signal est fort. Elle mesure le sens Windows vers
+  ESP32, contrairement au scan effectue par Windows ; les valeurs peuvent
+  donc differer. Le RSSI du scan n'est jamais reutilise comme signal actuel.
+  Ancien firmware ou mesure echouee : signal indique indisponible.
+  Hors connexion, la qualite est indiquee indisponible ;
+  le nom et l'adresse restent ceux du dernier controleur tente.
+  Les confirmations d'application et d'enregistrement sont affichees pres
+  des boutons de configuration, pas dans l'encart Connexion.
   Les segments representent l'**interpolation lineaire**, pas des marches :
   30 °C / 40 % et 40 °C / 60 % donnent 50 % a 35 °C.
-  Le **mode avance** expose l'edition des points, la relecture, l'abandon du
-  brouillon, les valeurs d'usine et les informations NVS ; les boutons
+  Le toggle **Lecture / Edition**, a droite du titre des courbes, affiche ou masque
+  l'edition des points sans effacer le brouillon. Il ne modifie pas le tableau
+  de bord. En edition et connecte, glisser un point directement sur le graphique
+  ajuste temperature et PWM au dixieme ; les axes restent fixes (-20 a 120 °C,
+  0 a 100 %) pendant l'edition. Le deplacement est limite par les points voisins
+  pour conserver temperatures croissantes et PWM non decroissant.
+  Les champs numeriques restent utilisables au clavier.
+  Chaque ligne dispose d'une corbeille ; conserver au moins deux points est
+  obligatoire. Deplacement et suppression modifient seulement le brouillon.
+  Les boutons + et corbeille sont aussi presents en bas a droite du graphique.
+  + insere et selectionne un point au milieu du plus grand intervalle de
+  temperatures, avec un PWM interpole : la forme de la courbe est conservee.
+  Cliquer sur un point le selectionne (contour blanc) pour le supprimer.
+  L'ajout est desactive pour un profil invalide ou deja compose de huit points.
+  Le parcours est Modifier / Appliquer en RAM / Enregistrer sur
+  l'ESP32, avec un court statut et un bouton pour annuler les edits locaux.
+  Les informations techniques RAM/NVS ne sont pas affichees ; les boutons
   Appliquer RAM / Enregistrer ESP32 restent distincts.
 - **Fermer ou reduire** masque dans la zone de notification et conserve la
   connexion/acquisition. Double-clic sur l'icone ou menu **Ouvrir** pour revenir.
   Relancer l'EXE restaure l'instance deja ouverte, sans seconde acquisition.
   **Quitter** (fenetre ou menu de l'icone) termine reellement le programme.
-  Aucun demarrage automatique Windows n'est configure.
+  La case **Lancer au demarrage de Windows**, dans Parametres, active le
+  lancement dans le systray a l'ouverture de la session Windows. Elle est
+  desactivee par defaut et ne necessite pas de droits administrateur.
+  La reconnexion automatique fonctionne aussi lorsque la fenetre est masquee.
+  Un lancement manuel restaure la fenetre.
+
+Ce reglage utilise uniquement la valeur `FanController` de
+`HKCU\Software\Microsoft\Windows\CurrentVersion\Run`, avec le chemin complet
+de l'executable et l'argument `--startup`. Decocher supprime cette valeur.
+Si le dossier de publication est deplace, reactiver la case depuis le nouvel
+emplacement. Garder le dossier complet de publication sur le disque.
+Une desactivation par Windows ou un outil systeme peut empecher le lancement.
+
+L'icone ventilateur est commune a l'executable, a la fenetre/barre des taches
+et au systray. Le fichier [ICO multi-resolution](src/FanController.App/Assets/FanController.ico)
+contient neuf tailles de 16 a 256 pixels ; un
+[apercu PNG](src/FanController.App/Assets/FanController.png) est fourni.
+Pour regenerer ces ressources sans dependance supplementaire, executer
+`powershell.exe -NoProfile -File .\scripts\New-AppIcon.ps1` sur Windows.
 
 ### Historique local
 
@@ -190,7 +262,7 @@ ainsi que les profils et modes fixes fractionnaires, sans les tronquer.
 ## Vérification et limites
 
 Validation exécutée le 2 novembre 2026 : **build Release sans erreur ni
-avertissement, 65 tests réussis, publication self-contained et smoke test
+avertissement, 72 tests réussis, publication self-contained et smoke test
 de la fenêtre réelle (onglets, scan, masquage/restauration systray, instance unique
 et sortie explicite) réussis**.
 Détails : `.azure\verification.md`. Après correction de la découverte,
@@ -216,7 +288,14 @@ Test UI réel, à exécuter dans une session Windows interactive (Windows PowerS
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\Smoke-Desktop.ps1
 # Optionnel : démarre seulement un scan radio, sans connexion ni écriture :
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\Smoke-Desktop.ps1 -Scan
+# Apres connexion manuelle reussie avec cette version puis Quitter :
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\Smoke-Desktop.ps1 -AutoConnect
 ```
+
+Le smoke test par defaut suppose qu'aucun dernier controleur n'est memorise.
+Le mode `-AutoConnect` utilise les vraies cles et le dernier controleur
+memorise, attend la connexion, verifie le formulaire masque et ne modifie
+pas les profils. Ne pas combiner `-Scan` et `-AutoConnect`.
 
 Les tests sans carte **ne prouvent pas** la radio, les permissions GATT du poste,
 le comportement de ses pilotes, les valeurs ADC/TACH/PWM, ni la persistance NVS.

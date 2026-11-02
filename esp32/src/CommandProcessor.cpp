@@ -32,8 +32,13 @@ bool CommandProcessor::readIndex(JsonVariantConst value, size_t maximum, size_t&
     return true;
 }
 
-void CommandProcessor::writeStatus(JsonObject data) const {
+void CommandProcessor::writeStatus(JsonObject data, const int8_t* rssi) const {
     data["firmware_version"] = FirmwareVersion;
+    if (rssi != nullptr) {
+        data["ble_rssi_dbm"] = *rssi;
+    } else {
+        data["ble_rssi_dbm"] = nullptr;
+    }
     data["uptime_ms"] = millis();
     data["dirty"] = storage_.dirty();
     data["storage"] = storage_.state();
@@ -41,7 +46,7 @@ void CommandProcessor::writeStatus(JsonObject data) const {
     thermal_.writeStatus(data, storage_.config());
 }
 
-String CommandProcessor::process(const String& command) {
+String CommandProcessor::process(const String& command, const int8_t* rssi) {
     JsonDocument request;
     const auto error = deserializeJson(request, command);
     if (error || !request.is<JsonObject>() || !request["cmd"].is<const char*>()) {
@@ -55,7 +60,7 @@ String CommandProcessor::process(const String& command) {
         writeConfig(response["data"].to<JsonObject>(), storage_.config());
         response["storage"] = storage_.state();
     } else if (strcmp(cmd, "get_status") == 0) {
-        writeStatus(response["data"].to<JsonObject>());
+        writeStatus(response["data"].to<JsonObject>(), rssi);
     } else if (strcmp(cmd, "set_profile") == 0) {
         size_t sensor;
         Profile profile{};

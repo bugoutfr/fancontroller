@@ -5,7 +5,7 @@ Répertoire : `C:\Code\Arduino\FanController\windows`.
 | Commande | Résultat |
 |---|---|
 | `dotnet build FanController.sln -c Release -p:Platform=x64` | Succès, 0 erreur, 0 avertissement |
-| `dotnet test tests\FanController.Tests\FanController.Tests.csproj -c Release` | 65 reussis, 0 echoue, 0 ignore |
+| `dotnet test tests\FanController.Tests\FanController.Tests.csproj -c Release` | 72 reussis, 0 echoue, 0 ignore |
 | `dotnet publish src\FanController.App\FanController.App.csproj -c Release -r win-x64 -p:Platform=x64 -o artifacts\desktop` | Succès |
 | `powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts\Smoke-Desktop.ps1 -Scan` | Fenetre reelle, onglets, commandes protegees hors connexion, scan, fermer/reduire en systray, relancement vers instance unique/restauration, Quitter termine le processus |
 
@@ -36,13 +36,29 @@ Répertoire : `C:\Code\Arduino\FanController\windows`.
 
 ## Nouvelles validations et limites
 
+- Reconnexion automatique : boucle testee avec erreurs repetees, plafond
+  exact de 30 s, derniere adresse sauvegardee/reouverte, absence de choix
+  sans appareil memorise, pause manuelle et reprise, perte de liaison apres
+  connexion, annulation en vol a la fermeture, echec sans faux succes.
+  Le test de resynchronisation couvre uniquement get_config/get_status.
+  Smoke `-AutoConnect` reussi sur le controleur reel : connexion automatique,
+  formulaire masque, onglets, toggle d'edition des courbes, systray et sortie.
+  Les coupures radio/reconnexions reelles ne sont pas encore validees.
 - Historique : persistance/reouverture, separation par controleur, temperature
   en defaut, retention exacte a la lecture, purge au lancement sans acquisition,
   ecritures concurrentes, fichier corrompu signale, extrema et detection des
   interruptions avant agregation bornee ; tests sans fichiers utilisateur.
 - Courbes de profil : points lineaires et invalidation lors des edits invalides.
 - Cartes stables conservees lors des mesures ; mode simple avec securites
-  visibles, mode avance avec details ; notifications sans changements inutiles.
+  visibles ; notifications sans changements inutiles. Le mode simple/avance
+  a ete retire : connexion dans Parametres et toggle dedie a l'edition des
+  courbes, sans changement du tableau de bord.
+- Parametres simplifies : bloc technique RAM/NVS retire, statut court,
+  Appliquer / Enregistrer distincts et annulation des edits locaux.
+  Espacement sous les onglets, padding vertical des cartes reduit,
+  tuiles en deux colonnes extensibles et marge avant les scrollbars.
+  Captures des trois onglets inspectees avec les mesures reelles ;
+  build, publication, smoke `-AutoConnect` et 72 tests reussis.
 - `firmware_version` accepte en JSON, champ optionnel pour lecture d'un ancien
   statut (le nouveau client exige toutefois une liaison BLE chiffree).
 - Firmware : build PlatformIO reussi ; suites C++ domaine/integration/appairage

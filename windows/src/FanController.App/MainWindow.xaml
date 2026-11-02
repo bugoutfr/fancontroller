@@ -11,7 +11,7 @@
                 <Setter Property="BorderBrush" Value="#304058"/>
                 <Setter Property="BorderThickness" Value="1"/>
                 <Setter Property="CornerRadius" Value="14"/>
-                <Setter Property="Padding" Value="20"/>
+                <Setter Property="Padding" Value="20,14"/>
             </Style>
         </Grid.Resources>
         <Grid.RowDefinitions>
@@ -27,43 +27,28 @@
                     <FontIcon Glyph="&#xE9CA;" Foreground="#5DD9C1" FontSize="32"/>
                     <TextBlock Text="FanController" FontSize="30" FontWeight="SemiBold"/>
                 </StackPanel>
-                <TextBlock Text="{Binding ConnectionLabel}" Foreground="#AABBD2"/>
+                <TextBlock Text="{Binding ConnectionLabel}" Foreground="#AABBD2" AutomationProperties.AutomationId="ConnectionStatus"/>
                 <TextBlock Text="{Binding Firmware}" Foreground="#5DD9C1"/>
             </StackPanel>
             <StackPanel Grid.Column="1" Spacing="8">
-                <ToggleSwitch Header="Mode avancé / diagnostic" IsOn="{Binding AdvancedMode, Mode=TwoWay}" OnContent="Avancé" OffContent="Simple"/>
                 <ProgressRing IsActive="{Binding Busy}" Width="20" Height="20" HorizontalAlignment="Right"/>
             </StackPanel>
         </Grid>
         <InfoBar Grid.Row="1" Margin="28,0" IsOpen="{Binding HasError}" IsClosable="False"
                  Severity="Error" Title="Opération interrompue" Message="{Binding Error}"/>
-        <Pivot Grid.Row="2" Margin="16,0">
-            <PivotItem Header="Tableau de bord" AutomationProperties.AutomationId="DashboardTab">
-                <ScrollViewer VerticalScrollBarVisibility="Auto">
-                    <StackPanel Spacing="16" Padding="12,8,12,24">
-                        <Border Style="{StaticResource Card}">
-                            <StackPanel Spacing="12">
-                                <TextBlock Text="Votre contrôleur, en direct" FontSize="22" FontWeight="SemiBold"/>
-                                <StackPanel Orientation="Horizontal" Spacing="10">
-                                    <Button Content="Rechercher (15 s)" Command="{Binding ScanCommand}" AutomationProperties.AutomationId="ScanButton"/>
-                                    <ComboBox ItemsSource="{Binding Devices}" SelectedItem="{Binding SelectedDevice, Mode=TwoWay}"
-                                              DisplayMemberPath="Label" PlaceholderText="Choisir le contrôleur" MinWidth="320"
-                                              AutomationProperties.Name="Contrôleur BLE"/>
-                                    <Button Content="Connecter / appairer" Command="{Binding ConnectCommand}"
-                                            Style="{ThemeResource AccentButtonStyle}" AutomationProperties.AutomationId="ConnectButton"/>
-                                    <Button Content="Déconnecter" Command="{Binding DisconnectCommand}" AutomationProperties.AutomationId="DisconnectButton"/>
-                                </StackPanel>
-                                <TextBlock Text="{Binding Message}" TextWrapping="Wrap" IsTextSelectionEnabled="True"/>
-                                <TextBlock Text="Premier appairage : maintenir BOOT 2 s puis relâcher sur l’ESP32 ; connecter sous 60 s. Les connexions suivantes utilisent les clés mémorisées."
-                                           TextWrapping="Wrap" Foreground="#AABBD2"/>
-                            </StackPanel>
-                        </Border>
+        <Pivot Grid.Row="2">
+            <Pivot.Resources>
+                <Thickness x:Key="PivotHeaderItemMargin">28,0,12,0</Thickness>
+            </Pivot.Resources>
+            <PivotItem Header="Tableau de bord" Margin="0" AutomationProperties.AutomationId="DashboardTab">
+                <ScrollViewer VerticalScrollBarVisibility="Auto" Margin="0,16,0,0">
+                    <StackPanel Spacing="16" Padding="28,0,28,24">
                         <TextBlock Text="{Binding LastUpdate}" Foreground="#AABBD2"/>
                         <ItemsControl ItemsSource="{Binding Sensors}">
-                            <ItemsControl.ItemsPanel><ItemsPanelTemplate><ItemsWrapGrid Orientation="Horizontal" MaximumRowsOrColumns="2"/></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemsPanel><ItemsPanelTemplate><charts:TwoColumnPanel/></ItemsPanelTemplate></ItemsControl.ItemsPanel>
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate>
-                                    <Border Style="{StaticResource Card}" Width="490" Margin="0,0,12,12">
+                                    <Border Style="{StaticResource Card}" HorizontalAlignment="Stretch">
                                         <StackPanel Spacing="10">
                                             <TextBlock Text="{Binding Title}" Foreground="#AABBD2"/>
                                             <TextBlock Text="{Binding Temperature}" FontSize="40" FontWeight="SemiBold" Foreground="#5DD9C1"/>
@@ -75,10 +60,10 @@
                         </ItemsControl>
                         <TextBlock Text="Ventilation" FontSize="22" FontWeight="SemiBold"/>
                         <ItemsControl ItemsSource="{Binding FanReadings}">
-                            <ItemsControl.ItemsPanel><ItemsPanelTemplate><ItemsWrapGrid Orientation="Horizontal" MaximumRowsOrColumns="2"/></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemsPanel><ItemsPanelTemplate><charts:TwoColumnPanel/></ItemsPanelTemplate></ItemsControl.ItemsPanel>
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate>
-                                    <Border Style="{StaticResource Card}" Width="490" Margin="0,0,12,12">
+                                    <Border Style="{StaticResource Card}" HorizontalAlignment="Stretch">
                                         <StackPanel Spacing="8">
                                             <TextBlock Text="{Binding Title}" Foreground="#AABBD2"/>
                                             <TextBlock Text="{Binding Rpm}" FontSize="26" FontWeight="SemiBold"/>
@@ -93,9 +78,9 @@
                     </StackPanel>
                 </ScrollViewer>
             </PivotItem>
-            <PivotItem Header="Historique" AutomationProperties.AutomationId="HistoryTab">
-                <ScrollViewer VerticalScrollBarVisibility="Auto">
-                    <StackPanel Padding="12,8,12,24" Spacing="16">
+            <PivotItem Header="Historique" Margin="0" AutomationProperties.AutomationId="HistoryTab">
+                <ScrollViewer VerticalScrollBarVisibility="Auto" Margin="0,16,0,0">
+                    <StackPanel Padding="28,0,28,24" Spacing="16">
                         <StackPanel Orientation="Horizontal" Spacing="16">
                             <ComboBox ItemsSource="{Binding History.Devices}" SelectedItem="{Binding History.SelectedDevice, Mode=TwoWay}"
                                       DisplayMemberPath="Label" Width="240" PlaceholderText="Historique du contrôleur"/>
@@ -123,18 +108,61 @@
                     </StackPanel>
                 </ScrollViewer>
             </PivotItem>
-            <PivotItem Header="Paramètres" AutomationProperties.AutomationId="SettingsTab">
-                <ScrollViewer VerticalScrollBarVisibility="Auto">
-                    <StackPanel Padding="12,8,12,24" Spacing="16">
+            <PivotItem Header="Paramètres" Margin="0" AutomationProperties.AutomationId="SettingsTab">
+                <ScrollViewer VerticalScrollBarVisibility="Auto" Margin="0,16,0,0" AutomationProperties.AutomationId="SettingsScrollViewer">
+                    <StackPanel Padding="28,0,28,24" Spacing="16">
+                        <Border Style="{StaticResource Card}">
+                            <StackPanel Spacing="8">
+                                <CheckBox Content="Lancer au démarrage de Windows"
+                                          IsChecked="{Binding LaunchAtStartup, Mode=TwoWay}"
+                                          AutomationProperties.AutomationId="WindowsStartupCheckBox"/>
+                                <TextBlock Text="À l’ouverture de votre session, l’application démarre dans le systray et se reconnecte au dernier contrôleur."
+                                           Foreground="#AABBD2" TextWrapping="Wrap"/>
+                            </StackPanel>
+                        </Border>
+                        <Border Style="{StaticResource Card}">
+                            <StackPanel Spacing="12">
+                                <TextBlock Text="Connexion au contrôleur" FontSize="22" FontWeight="SemiBold"/>
+                                <TextBlock Text="{Binding ControllerName}" FontSize="18" FontWeight="SemiBold"
+                                           AutomationProperties.AutomationId="ControllerName"/>
+                                <TextBlock Text="{Binding ControllerIdentifier}" IsTextSelectionEnabled="True"
+                                           Foreground="#AABBD2" AutomationProperties.AutomationId="ControllerIdentifier"/>
+                                <TextBlock Text="{Binding LinkQuality}" AutomationProperties.AutomationId="LinkQuality"/>
+                                <TextBlock Text="Puissance du signal reçu sur la liaison active (RSSI). Plus la valeur est proche de zéro, plus le signal est fort."
+                                           TextWrapping="Wrap" Foreground="#AABBD2"/>
+                                <StackPanel Orientation="Horizontal" Spacing="10" Visibility="{Binding ConnectionVisibility}">
+                                    <Button Content="Rechercher (15 s)" Command="{Binding ScanCommand}" AutomationProperties.AutomationId="ScanButton"/>
+                                    <ComboBox ItemsSource="{Binding Devices}" SelectedItem="{Binding SelectedDevice, Mode=TwoWay}"
+                                              DisplayMemberPath="Label" PlaceholderText="Choisir le contrôleur" MinWidth="320"
+                                              AutomationProperties.Name="Contrôleur BLE"/>
+                                    <Button Content="Connecter / appairer" Command="{Binding ConnectCommand}"
+                                            Style="{ThemeResource AccentButtonStyle}" AutomationProperties.AutomationId="ConnectButton"/>
+                                </StackPanel>
+                                <Button Content="Déconnecter / suspendre la reconnexion" Command="{Binding DisconnectCommand}" AutomationProperties.AutomationId="DisconnectButton"/>
+                                <TextBlock Text="{Binding Message}" TextWrapping="Wrap" IsTextSelectionEnabled="True"/>
+                                <TextBlock Text="Premier appairage : maintenir BOOT 2 s puis relâcher sur l’ESP32 ; connecter sous 60 s. Les connexions suivantes utilisent les clés mémorisées."
+                                           TextWrapping="Wrap" Foreground="#AABBD2" Visibility="{Binding ConnectionVisibility}"/>
+                            </StackPanel>
+                        </Border>
                         <TextBlock Text="Courbes de ventilation" FontSize="24" FontWeight="SemiBold"/>
-                        <TextBlock Text="Interpolation linéaire entre les points. Activez le mode avancé pour éditer les points des courbes." TextWrapping="Wrap" Foreground="#AABBD2"/>
+                        <Grid ColumnSpacing="16">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                            <TextBlock Text="Interpolation linéaire entre les points. Activez l’édition pour modifier les courbes ; désactiver l’édition conserve le brouillon."
+                                       TextWrapping="Wrap" Foreground="#AABBD2" VerticalAlignment="Center"/>
+                            <ToggleSwitch Grid.Column="1" IsOn="{Binding CurveEditing, Mode=TwoWay}"
+                                          OnContent="Édition" OffContent="Lecture" HorizontalAlignment="Right"
+                                          MinWidth="0" VerticalAlignment="Center"
+                                          AutomationProperties.Name="Édition des courbes" AutomationProperties.AutomationId="CurveEditingToggle"/>
+                        </Grid>
                         <ItemsControl ItemsSource="{Binding Profiles}">
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate>
                                     <Border Style="{StaticResource Card}" Margin="0,0,0,16">
                                         <StackPanel Spacing="12">
                                             <TextBlock Text="{Binding Title}" FontSize="20" FontWeight="SemiBold"/>
-                                            <charts:LineChart Series="{Binding Curve}"/>
+                                            <charts:LineChart Series="{Binding Curve}" Editor="{Binding}"
+                                                              IsEditing="{Binding IsEditing}" AutomationProperties.AutomationId="EditableCurve"
+                                                              AutomationProperties.Name="{Binding Title}"/>
                                         </StackPanel>
                                     </Border>
                                 </DataTemplate>
@@ -159,8 +187,8 @@
                                 </ItemsControl.ItemTemplate>
                             </ItemsControl>
                         </UserControl>
-                        <StackPanel Visibility="{Binding AdvancedVisibility}" Spacing="12">
-                            <TextBlock Text="Avancé • édition des points" FontSize="22" Foreground="#FFB86B"/>
+                        <StackPanel Visibility="{Binding CurveEditorVisibility}" Spacing="12" AutomationProperties.AutomationId="CurveEditorPanel">
+                            <TextBlock Text="Édition des points" FontSize="22" Foreground="#FFB86B" AutomationProperties.AutomationId="CurveEditorTitle"/>
                             <UserControl IsEnabled="{Binding CanEdit}">
                                 <ItemsControl ItemsSource="{Binding Profiles}">
                                     <ItemsControl.ItemTemplate>
@@ -172,17 +200,21 @@
                                                     <ItemsControl ItemsSource="{Binding Points}">
                                                         <ItemsControl.ItemTemplate>
                                                             <DataTemplate>
-                                                                <StackPanel Orientation="Horizontal" Spacing="16" Margin="0,0,0,6">
+                                                                <Grid ColumnSpacing="16" Margin="0,0,0,6">
+                                                                    <Grid.ColumnDefinitions>
+                                                                        <ColumnDefinition Width="180"/><ColumnDefinition Width="140"/>
+                                                                        <ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/>
+                                                                    </Grid.ColumnDefinitions>
                                                                     <TextBox Text="{Binding Temperature, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Width="180" AutomationProperties.Name="Température du point"/>
-                                                                    <TextBox Text="{Binding Duty, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Width="140" AutomationProperties.Name="PWM du point"/>
-                                                                </StackPanel>
+                                                                    <TextBox Grid.Column="1" Text="{Binding Duty, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Width="140" AutomationProperties.Name="PWM du point"/>
+                                                                    <Button Grid.Column="3" Command="{Binding RemoveCommand}" ToolTipService.ToolTip="Supprimer ce point"
+                                                                            AutomationProperties.Name="Supprimer ce point">
+                                                                        <FontIcon Glyph="&#xE74D;" FontSize="16"/>
+                                                                    </Button>
+                                                                </Grid>
                                                             </DataTemplate>
                                                         </ItemsControl.ItemTemplate>
                                                     </ItemsControl>
-                                                    <StackPanel Orientation="Horizontal" Spacing="12">
-                                                        <Button Content="Ajouter un point" Command="{Binding AddCommand}"/>
-                                                        <Button Content="Retirer le dernier point" Command="{Binding RemoveCommand}"/>
-                                                    </StackPanel>
                                                 </StackPanel>
                                             </Border>
                                         </DataTemplate>
@@ -190,22 +222,19 @@
                                 </ItemsControl>
                             </UserControl>
                             <TextBlock Text="2 à 8 points • −20 à 120 °C, strictement croissants • PWM 0 à 100 %, non décroissant." TextWrapping="Wrap"/>
-                            <TextBlock Text="{Binding Storage}" TextWrapping="Wrap"/>
-                            <StackPanel Orientation="Horizontal" Spacing="10">
-                                <Button Content="Relire l’état distant" Command="{Binding ReadCommand}"/>
-                                <Button Content="Abandonner le brouillon local" Command="{Binding AdoptCommand}"/>
-                                <Button Content="Valeurs d’usine en RAM" Command="{Binding DefaultsCommand}"/>
-                            </StackPanel>
-                            <InfoBar IsOpen="True" IsClosable="False" Severity="Warning" Title="Appairage avec présence physique"
-                                     Message="Le bouton autorise le premier PC ; les sessions sont chiffrées. Sans code, Just Works ne protège pas d’une interception active au premier appairage. BOOT 10 s puis relâcher révoque le PC ; supprimer aussi l’appairage Windows."/>
+                            <TextBlock Text="Sur le graphique : + ajoute un point sur la courbe ; cliquez sur un point pour le sélectionner, puis sur la corbeille pour le supprimer. Glissez-le pour ajuster température et PWM. Les corbeilles des lignes restent disponibles."
+                                       TextWrapping="Wrap" Foreground="#AABBD2"/>
                         </StackPanel>
-                        <TextBlock Text="{Binding LocalState}" FontWeight="SemiBold"/>
+                        <TextBlock Text="{Binding SettingsSummary}" TextWrapping="Wrap"/>
+                        <TextBlock Text="{Binding ConfigurationMessage}" TextWrapping="Wrap"
+                                   AutomationProperties.AutomationId="ConfigurationMessage"/>
                         <TextBlock Text="{Binding ValidationMessage}" Foreground="#FFB86B" TextWrapping="Wrap"/>
                         <StackPanel Orientation="Horizontal" Spacing="12">
                             <Button Content="1. Appliquer en RAM" Command="{Binding ApplyCommand}" Style="{ThemeResource AccentButtonStyle}" AutomationProperties.AutomationId="ApplyButton"/>
                             <Button Content="2. Enregistrer sur l’ESP32" Command="{Binding SaveCommand}" AutomationProperties.AutomationId="SaveButton"/>
+                            <Button Content="Annuler les modifications" Command="{Binding AdoptCommand}" AutomationProperties.AutomationId="RevertButton"/>
                         </StackPanel>
-                        <TextBlock Text="Appliquer modifie le fonctionnement immédiatement ; Enregistrer rend ces réglages persistants. Les sécurités thermiques restent prioritaires. Une rupture pendant l’application peut laisser une configuration partielle : relire avant de réessayer."
+                        <TextBlock Text="Appliquer change la ventilation immédiatement. Enregistrer conserve ces réglages après redémarrage. Les sécurités thermiques restent prioritaires."
                                    TextWrapping="Wrap" Foreground="#AABBD2"/>
                     </StackPanel>
                 </ScrollViewer>

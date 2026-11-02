@@ -7,6 +7,7 @@
     <RootNamespace>FanController.App</RootNamespace>
     <DefaultLanguage>fr-FR</DefaultLanguage>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>Assets\FanController.ico</ApplicationIcon>
     <Platforms>x64</Platforms>
     <PlatformTarget>x64</PlatformTarget>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
@@ -20,6 +21,7 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
   <ItemGroup>
+    <Content Include="Assets\FanController.ico" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <PackageReference Include="Microsoft.WindowsAppSDK" Version="2.6.4" />
     <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.28000.2957" />
     <ProjectReference Include="..\FanController.Core\FanController.Core.csproj" />

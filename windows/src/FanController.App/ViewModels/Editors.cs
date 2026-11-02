@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using System.Globalization;
+using System.Windows.Input;
 using FanController.Core;
 
 namespace FanController.App.ViewModels;
@@ -22,6 +23,7 @@ public sealed class BleDeviceDisplay(BleCandidate candidate) : ObservableObject
 
 public sealed class PointEditor : ObservableObject
 {
+    public ICommand? RemoveCommand { get; internal set; }
     private string _temperature, _duty;
     public string Temperature { get => _temperature; set => Set(ref _temperature, value); }
     public string Duty { get => _duty; set => Set(ref _duty, value); }
@@ -29,6 +31,13 @@ public sealed class PointEditor : ObservableObject
     {
         _temperature = point.Temperature.ToString(CultureInfo.CurrentCulture);
         _duty = point.Duty.ToString(CultureInfo.CurrentCulture);
+    }
+    internal void Move(CurvePoint point)
+    {
+        _temperature = point.Temperature.ToString(CultureInfo.CurrentCulture);
+        _duty = point.Duty.ToString(CultureInfo.CurrentCulture);
+        Changed(nameof(Temperature));
+        Changed(nameof(Duty));
     }
     public CurvePoint Read()
     {
@@ -41,6 +50,30 @@ public sealed class PointEditor : ObservableObject
 
 public sealed class ProfileEditor : ObservableObject
 {
+    private sealed class DeletePointCommand(ProfileEditor profile, PointEditor point) : ICommand
+    {
+        public event EventHandler? CanExecuteChanged;
+        public bool CanExecute(object? parameter) => profile.Points.Count > 2 && profile.Points.Contains(point);
+        public void Execute(object? parameter)
+        {
+            if (CanExecute(parameter)) profile.RemovePoint(point);
+        }
+        public void Refresh() => CanExecuteChanged?.Invoke(this, EventArgs.Empty);
+    }
+    private bool _isEditing;
+    public bool IsEditing { get => _isEditing; set => Set(ref _isEditing, value); }
+    private PointEditor? _selectedPoint;
+    public PointEditor? SelectedPoint
+    {
+        get => _selectedPoint;
+        set
+        {
+            if (!Set(ref _selectedPoint, value)) return;
+            Changed(nameof(HasSelectedPoint));
+            Changed(nameof(Curve));
+        }
+    }
+    public bool HasSelectedPoint => SelectedPoint is not null;
     public int Sensor { get; }
     public string Title => $"Profil de la sonde {Sensor} • ventilateurs {(Sensor == 1 ? "1 et 2" : "3 et 4")}";
     public ObservableCollection<PointEditor> Points { get; } = [];
@@ -65,29 +98,76 @@ public sealed class ProfileEditor : ObservableObject
         foreach (var p in points) Attach(new(p));
         AddCommand = new(() =>
         {
-            Attach(new(new(0, 0)));
+            var insertion = FindInsertion() ?? throw new InvalidOperationException("Aucun intervalle disponible pour un nouveau point.");
+            var point = new PointEditor(insertion.Point);
+            Attach(point, insertion.Index);
+            SelectedPoint = point;
             NotifyEdit();
             return Task.CompletedTask;
-        }, () => Points.Count < 8, _ => { });
+        }, () => Points.Count < 8 && FindInsertion() is not null, _ => { });
         RemoveCommand = new(() =>
         {
-            var last = Points[^1];
-            last.PropertyChanged -= PointChanged;
-            Points.RemoveAt(Points.Count - 1);
-            NotifyEdit();
+            RemovePoint(Points[^1]);
             return Task.CompletedTask;
         }, () => Points.Count > 2, _ => { });
     }
-    private void Attach(PointEditor point)
+    private void RemovePoint(PointEditor point)
     {
+        if (Points.Count <= 2 || !Points.Contains(point))
+            throw new InvalidOperationException("Un profil doit conserver au moins deux points.");
+        point.PropertyChanged -= PointChanged;
+        Points.Remove(point);
+        if (SelectedPoint == point) SelectedPoint = null;
+        NotifyEdit();
+    }
+    private (int Index, CurvePoint Point)? FindInsertion()
+    {
+        CurvePoint[] values;
+        try { values = Read(); }
+        catch (ArgumentException) { return null; }
+        (int Index, CurvePoint Point)? result = null;
+        var widest = 0.0;
+        for (var i = 1; i < values.Length; i++)
+        {
+            var left = values[i - 1];
+            var right = values[i];
+            var gap = right.Temperature - left.Temperature;
+            var temperature = left.Temperature + gap / 2;
+            if (gap <= widest || temperature <= left.Temperature || temperature >= right.Temperature) continue;
+            result = (i, new(temperature, left.Duty + (right.Duty - left.Duty) / 2));
+            widest = gap;
+        }
+        return result;
+    }
+    public void MovePoint(PointEditor point, double temperature, double duty)
+    {
+        if (!IsEditing) throw new InvalidOperationException("L’édition du graphique est désactivée.");
+        if (!double.IsFinite(temperature) || !double.IsFinite(duty))
+            throw new ArgumentException("Les coordonnées du point doivent être finies.");
+        var index = Points.IndexOf(point);
+        if (index < 0) throw new ArgumentException("Ce point n’appartient pas au profil.", nameof(point));
+        var values = Read();
+        var current = values[index];
+        var minTemperature = index == 0 ? -20 : Math.Min(current.Temperature, values[index - 1].Temperature + 0.1);
+        var maxTemperature = index == values.Length - 1 ? 120 : Math.Max(current.Temperature, values[index + 1].Temperature - 0.1);
+        var minDuty = index == 0 ? 0 : values[index - 1].Duty;
+        var maxDuty = index == values.Length - 1 ? 100 : values[index + 1].Duty;
+        point.Move(new(Math.Clamp(Math.Round(temperature, 1), minTemperature, maxTemperature),
+            Math.Clamp(Math.Round(duty, 1), minDuty, maxDuty)));
+    }
+    private void Attach(PointEditor point, int? index = null)
+    {
+        point.RemoveCommand = new DeletePointCommand(this, point);
         point.PropertyChanged += PointChanged;
-        Points.Add(point);
+        Points.Insert(index ?? Points.Count, point);
     }
     private void PointChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs args) => NotifyEdit();
     private void NotifyEdit()
     {
         AddCommand.Refresh();
         RemoveCommand.Refresh();
+        foreach (var point in Points)
+            if (point.RemoveCommand is DeletePointCommand command) command.Refresh();
         Changed(nameof(Curve));
         Edited?.Invoke();
     }

@@ -201,6 +201,14 @@ verifiant legacy desactive et Secure Connections active. Le chiffrement RX,
 le proprietaire unique et la cle de 16 octets restent obligatoires.
 Les cles Secure Connections deja creees peuvent etre conservees.
 
+Ajout 1.1.3 : `get_status.data.ble_rssi_dbm` fournit le RSSI en dBm de la
+liaison active, mesure par le recepteur ESP32 (sens Windows vers ESP32).
+La lecture utilise `ble_gap_conn_rssi` au traitement de la commande, sans
+relancer les annonces ni modifier l'appairage. Plage valide : -127 a +20 dBm.
+En cas d'echec ou de valeur HCI 127 (indisponible), le champ vaut `null`
+et un diagnostic serie est emis ; aucune ancienne mesure n'est reutilisee.
+Les cles et les profils existants sont conserves apres televersement.
+
 ### Transport
 
 1. Scanner le service avec `BluetoothLEAdvertisementWatcher` ou enumerer les
@@ -280,9 +288,11 @@ La reponse `get_config` contient aussi `dirty` et `storage` a la racine.
 
 - `uptime_ms` (compteur 32 bits, reboucle apres environ 49,7 jours),
   `dirty`, `storage`, `storage_available`.
-- `firmware_version` : version semantique, actuellement `"1.1.2"`, definie dans
+- `firmware_version` : version semantique, actuellement `"1.1.3"`, definie dans
   [FirmwareVersion.h](include/FirmwareVersion.h). Distincte de la version 1 du
   format de configuration NVS ; les profils sauvegardes restent compatibles.
+- `ble_rssi_dbm` : puissance du signal recu par l'ESP32 sur la liaison active,
+  entier de -127 a +20 dBm, ou `null` si indisponible (depuis 1.1.3).
 - `sensors` : deux objets `sensor`, `millivolts`, `temperature` (degres C ou null),
   `fault` (`none`, `short_circuit`, `open_circuit`, `out_of_range`), `safety`.
 - `fans` : quatre objets `fan`, `sensor`, `mode`, `fixed_duty`, `target_duty`

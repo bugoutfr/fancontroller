@@ -61,6 +61,62 @@ public sealed class EditorTests
     }
 
     [Fact]
+    public void DraggingUpdatesTheDraftAndPreservesProfileConstraints()
+    {
+        var profile = new ProfileEditor(1, [new(20, 20), new(40, 50), new(60, 80)]) { IsEditing = true };
+        var middle = profile.Points[1];
+        var validNotifications = 0;
+        profile.Edited += () => { Validation.Profile(profile.Read()); validNotifications++; };
+        profile.MovePoint(middle, 35.26, 45.26);
+        Assert.Equal(new CurvePoint(35.3, 45.3), middle.Read());
+        profile.MovePoint(middle, -100, -100);
+        Assert.Equal(new CurvePoint(20.1, 20), middle.Read());
+        profile.MovePoint(middle, 200, 200);
+        Assert.Equal(new CurvePoint(59.9, 80), middle.Read());
+        profile.MovePoint(profile.Points[0], -100, -100);
+        Assert.Equal(new CurvePoint(-20, 0), profile.Points[0].Read());
+        profile.MovePoint(profile.Points[^1], 200, 200);
+        Assert.Equal(new CurvePoint(120, 100), profile.Points[^1].Read());
+        Assert.True(validNotifications > 0);
+        profile.IsEditing = false;
+        Assert.Throws<InvalidOperationException>(() => profile.MovePoint(middle, 30, 30));
+    }
+
+    [Fact]
+    public void DragRejectsInvalidInputsAndHandlesCloselySpacedPoints()
+    {
+        var profile = new ProfileEditor(1, [new(20, 20), new(20.001, 20), new(20.002, 20)]) { IsEditing = true };
+        profile.MovePoint(profile.Points[1], 0, 100);
+        Validation.Profile(profile.Read());
+        Assert.Equal(new CurvePoint(20.001, 20), profile.Points[1].Read());
+        Assert.Throws<ArgumentException>(() => profile.MovePoint(profile.Points[0], double.NaN, 0));
+        Assert.Throws<ArgumentException>(() => profile.MovePoint(profile.Points[0], 20, double.PositiveInfinity));
+        Assert.Throws<ArgumentException>(() => profile.MovePoint(new(new(30, 40)), 30, 40));
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(1)]
+    [InlineData(2)]
+    public void TrashRemovesAnyPointAndKeepsAtLeastTwo(int index)
+    {
+        var profile = new ProfileEditor(1, [new(20, 20), new(40, 50), new(60, 80)]);
+        var deleted = profile.Points[index];
+        var remaining = profile.Points.Where(p => p != deleted).ToArray();
+        var edits = 0;
+        profile.Edited += () => edits++;
+        Assert.True(deleted.RemoveCommand!.CanExecute(null));
+        deleted.RemoveCommand.Execute(null);
+        Assert.Equal(remaining, profile.Points);
+        Assert.Equal(1, edits);
+        Assert.All(profile.Points, point => Assert.False(point.RemoveCommand!.CanExecute(null)));
+        Assert.False(deleted.RemoveCommand.CanExecute(null));
+        deleted.Temperature = "21";
+        Assert.Equal(1, edits);
+        Validation.Profile(profile.Read());
+    }
+
+    [Fact]
     public void TelemetryCardsUpdatePropertiesWithoutReplacingItemsOrResettingCollections()
     {
         var sensor = new SensorDisplay("Sonde 1");
@@ -127,11 +183,26 @@ public sealed class EditorTests
         Assert.True(profile.RemoveCommand.CanExecute(null));
         profile.Points[0].Temperature = "21";
         Assert.Equal(7, edits);
-        Assert.Throws<ArgumentException>(() => profile.Read()); // Les points ajoutés exigent une saisie explicite.
+        Validation.Profile(profile.Read());
         for (var i = 0; i < 6; i++) profile.RemoveCommand.Execute(null);
         Assert.Equal(2, profile.Points.Count);
         Assert.False(profile.RemoveCommand.CanExecute(null));
         Assert.Equal(2, profile.Read().Length);
+    }
+    [Fact]
+    public void AddingInsertsOnTheWidestSegmentAndSelectsWithoutChangingTheCurveShape()
+    {
+        var profile = new ProfileEditor(1, [new(20, 20), new(40, 40), new(100, 100)]);
+        profile.AddCommand.Execute(null);
+        Assert.Equal(new CurvePoint(70, 70), profile.Points[2].Read());
+        Assert.Same(profile.Points[2], profile.SelectedPoint);
+        Assert.NotEmpty(profile.Curve);
+        Validation.Profile(profile.Read());
+        profile.SelectedPoint!.RemoveCommand!.Execute(null);
+        Assert.Null(profile.SelectedPoint);
+        Assert.Equal(3, profile.Points.Count);
+        profile.Points[0].Temperature = "invalide";
+        Assert.False(profile.AddCommand.CanExecute(null));
     }
     [Fact]
     public void FixedModeValidationAndAutoIgnoreInactiveDuty()

@@ -8,13 +8,14 @@ internal sealed class TrayIcon : IDisposable
 {
     private const uint CallbackMessage = 0x8001;
     private readonly nint _window;
+    private readonly nint _icon;
     private readonly Action _open, _quit, _hide;
     private readonly DispatcherQueue _dispatcher;
     private readonly SubclassProc _procedure;
     private readonly uint _taskbarCreated = RegisterWindowMessage("TaskbarCreated");
     private bool _disposed;
 
-    public TrayIcon(nint window, DispatcherQueue dispatcher, Action open, Action hide, Action quit)
+    public TrayIcon(nint window, DispatcherQueue dispatcher, string iconPath, Action open, Action hide, Action quit)
     {
         _window = window;
         _dispatcher = dispatcher;
@@ -22,11 +23,19 @@ internal sealed class TrayIcon : IDisposable
         _hide = hide;
         _quit = quit;
         _procedure = ProcessMessage;
+        var size = GetSystemMetrics(49);
+        _icon = LoadImage(0, iconPath, 1, size, size, 0x10);
+        if (_icon == 0)
+            throw new Win32Exception(Marshal.GetLastWin32Error(), "Chargement de l’icône FanController impossible.");
         if (!SetWindowSubclass(window, _procedure, 1, 0))
+        {
+            DestroyIcon(_icon);
             throw new Win32Exception(Marshal.GetLastWin32Error(), "Installation de l’icône de notification impossible.");
+        }
         if (!AddIcon())
         {
             RemoveWindowSubclass(window, _procedure, 1);
+            DestroyIcon(_icon);
             throw new Win32Exception(Marshal.GetLastWin32Error(), "Création de l’icône de notification impossible.");
         }
     }
@@ -35,7 +44,7 @@ internal sealed class TrayIcon : IDisposable
     {
         Size = (uint)Marshal.SizeOf<NotifyIconData>(), Window = _window, Id = 1,
         Flags = 1 | 2 | 4, Callback = CallbackMessage,
-        Icon = LoadIcon(0, 32516), Tip = "FanController — double-clic pour ouvrir",
+        Icon = _icon, Tip = "FanController — double-clic pour ouvrir",
         Info = "", InfoTitle = ""
     };
     private bool AddIcon()
@@ -95,6 +104,7 @@ internal sealed class TrayIcon : IDisposable
         var data = Data();
         Shell_NotifyIcon(2, ref data);
         RemoveWindowSubclass(_window, _procedure, 1);
+        DestroyIcon(_icon);
     }
 
     private delegate nint SubclassProc(nint window, uint message, nuint wParam, nint lParam, nuint id, nuint data);
@@ -121,7 +131,10 @@ internal sealed class TrayIcon : IDisposable
     [return: MarshalAs(UnmanagedType.Bool)] private static extern bool SetWindowSubclass(nint window, SubclassProc proc, nuint id, nuint data);
     [DllImport("comctl32.dll")] private static extern bool RemoveWindowSubclass(nint window, SubclassProc proc, nuint id);
     [DllImport("comctl32.dll")] private static extern nint DefSubclassProc(nint window, uint msg, nuint wParam, nint lParam);
-    [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern nint LoadIcon(nint instance, nint name);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    private static extern nint LoadImage(nint instance, string name, uint type, int width, int height, uint flags);
+    [DllImport("user32.dll")] private static extern bool DestroyIcon(nint icon);
+    [DllImport("user32.dll")] private static extern int GetSystemMetrics(int index);
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern uint RegisterWindowMessage(string message);
     [DllImport("user32.dll")] private static extern nint CreatePopupMenu();
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern bool AppendMenu(nint menu, uint flags, nuint id, string text);

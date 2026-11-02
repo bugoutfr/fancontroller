@@ -1,5 +1,6 @@
 #include "BleTransport.h"
 #include <algorithm>
+#include <nimble/nimble/host/include/host/ble_gap.h>
 
 namespace controller {
 namespace {
@@ -167,7 +168,13 @@ void BleTransport::receiveCommands(uint32_t now) {
             if (discardingInput_) {
                 discardingInput_ = false;
             } else if (!input_.isEmpty()) {
-                output_ = commands_.process(input_);
+                int8_t rssi = 127;
+                const int rc = ble_gap_conn_rssi(connectionHandle_.load(), &rssi);
+                const bool validRssi = rc == 0 && rssi >= -127 && rssi <= 20;
+                if (!validRssi) {
+                    Serial.printf("BLE RSSI unavailable: rc=%d, value=%d\n", rc, rssi);
+                }
+                output_ = commands_.process(input_, validRssi ? &rssi : nullptr);
             } else {
                 output_ = CommandProcessor::errorResponse("empty_command", "Expected a JSON command before LF");
             }

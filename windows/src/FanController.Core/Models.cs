@@ -10,7 +10,7 @@ public sealed record SensorStatus(int Sensor, double Millivolts, double? Tempera
 public sealed record FanStatus(int Fan, int Sensor, string Mode, double FixedDuty, double TargetDuty,
     double AppliedDuty, double Rpm, bool PwmOk, bool Boost);
 public sealed record Telemetry(uint UptimeMs, bool Dirty, string Storage, bool StorageAvailable,
-    SensorStatus[] Sensors, FanStatus[] Fans, string? FirmwareVersion = null);
+    SensorStatus[] Sensors, FanStatus[] Fans, string? FirmwareVersion = null, int? BleRssiDbm = null);
 public sealed record RemoteConfiguration(Configuration Configuration, bool Dirty, string Storage);
 
 public static class WireJson
@@ -64,7 +64,8 @@ public static class Validation
             !status.Sensors.Select(s => s.Sensor).Order().SequenceEqual(new[] { 1, 2 }) ||
             !status.Fans.Select(f => f.Fan).Order().SequenceEqual(new[] { 1, 2, 3, 4 }))
             throw new InvalidDataException("Télémétrie firmware incompatible.");
-        if (string.IsNullOrEmpty(status.Storage) ||
+        if (status.BleRssiDbm is < -127 or > 20 ||
+            string.IsNullOrEmpty(status.Storage) ||
             status.Sensors.Any(s => s.Temperature is { } t && !double.IsFinite(t)) ||
             status.Sensors.Any(s => !double.IsFinite(s.Millivolts) || s.Millivolts < 0) ||
             status.Sensors.Any(s => s.Fault is not ("none" or "short_circuit" or "open_circuit" or "out_of_range")) ||

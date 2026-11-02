@@ -15,6 +15,8 @@ Aucun service cloud ni backend n'est necessaire.
 - Appairage BLE persistant autorise physiquement par le bouton BOOT.
 - Client Windows en francais : graphiques des profils, historique local
   temperatures/RPM sur 30 jours et fonctionnement en zone de notification.
+- Connexion automatique au dernier controleur memorise encore appaire dans
+  Windows et reconnexion apres coupure, sans rejouer les ecritures interrompues.
 
 La regulation continue sur l'ESP32 sans ordinateur ni connexion Bluetooth.
 Le pourcentage commande le PWM : ce n'est pas un asservissement de la vitesse

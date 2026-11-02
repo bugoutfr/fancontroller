@@ -51,7 +51,17 @@ void testCommandsRegulationAndStorage() {
     assert(response["storage"] == "defaults");
     advance(thermal, storage, 250);
     response = status(processor);
-    assert(response["data"]["firmware_version"] == "1.1.2");
+    assert(response["data"]["firmware_version"] == "1.1.3");
+    assert(response["data"]["ble_rssi_dbm"].isNull());
+    for (const int8_t rssi : {int8_t(-127), int8_t(-62), int8_t(0), int8_t(20)}) {
+        const String wire = processor.process(R"({"cmd":"get_status"})", &rssi);
+        JsonDocument measured;
+        assert(!deserializeJson(measured, wire));
+        assert(measured["ok"] == true);
+        assert(measured["data"]["ble_rssi_dbm"].is<int>());
+        assert(measured["data"]["ble_rssi_dbm"].as<int>() == rssi);
+    }
+    assert(status(processor)["data"]["ble_rssi_dbm"].isNull());
     assert(response["data"]["sensors"].size() == 2);
     assert(response["data"]["fans"].size() == 4);
     assert(std::fabs(response["data"]["sensors"][0]["temperature"].as<float>() - 24.3f) < 0.01f);

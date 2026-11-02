@@ -85,6 +85,36 @@ public sealed class FramingAndValidationTests
         Assert.Equal("""{"temperature":25.5,"duty":40}""", JsonSerializer.Serialize(new CurvePoint(25.5, 40), WireJson.Options));
     }
 
+    [Theory]
+    [InlineData("")]
+    [InlineData(",\"ble_rssi_dbm\":null")]
+    [InlineData(",\"ble_rssi_dbm\":-62", -62)]
+    [InlineData(",\"ble_rssi_dbm\":-127", -127)]
+    [InlineData(",\"ble_rssi_dbm\":0", 0)]
+    [InlineData(",\"ble_rssi_dbm\":20", 20)]
+    public void SignalIsReadWithBackwardCompatibility(string field, int? expected = null)
+    {
+        using var document = JsonDocument.Parse(
+            """{"uptime_ms":1,"dirty":false,"storage":"loaded","storage_available":true,"sensors":[],"fans":[]"""
+            + field + "}");
+        Assert.Equal(expected, WireJson.Read<Telemetry>(document.RootElement).BleRssiDbm);
+    }
+
+    [Theory]
+    [InlineData(-128)]
+    [InlineData(21)]
+    [InlineData(127)]
+    public void InvalidSignalIsRejected(int rssi)
+    {
+        var telemetry = new Telemetry(1, false, "loaded", true,
+            [new(1, 1650, 25, "none", false), new(2, 1650, 25, "none", false)],
+            Enumerable.Range(1, 4).Select(fan => new FanStatus(fan, fan <= 2 ? 1 : 2,
+                "auto", 0, 30, 30, 1000, true, false)).ToArray(), "1.1.3", rssi);
+        Validation.Status(telemetry with { BleRssiDbm = null });
+        Validation.Status(telemetry with { BleRssiDbm = -62 });
+        Assert.Throws<InvalidDataException>(() => Validation.Status(telemetry));
+    }
+
     [Fact]
     public void FractionalConfigurationAndMillivoltsAreReadWithoutRounding()
     {

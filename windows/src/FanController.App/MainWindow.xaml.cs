@@ -16,9 +16,10 @@ public sealed partial class MainWindow : Window
         _viewModel = new(DispatcherQueue);
         Root.DataContext = _viewModel;
         Root.Language = "fr-FR";
-        Root.Loaded += async (_, _) => await _viewModel.History.InitializeAsync();
+        var iconPath = Path.Combine(AppContext.BaseDirectory, "Assets", "FanController.ico");
+        AppWindow.SetIcon(iconPath);
         AppWindow.Resize(new SizeInt32(1180, 900));
-        _tray = new(WinRT.Interop.WindowNative.GetWindowHandle(this), DispatcherQueue,
+        _tray = new(WinRT.Interop.WindowNative.GetWindowHandle(this), DispatcherQueue, iconPath,
             ShowWindow, () => AppWindow.Hide(), Quit);
         AppWindow.Closing += (_, args) =>
         {
@@ -28,6 +29,8 @@ public sealed partial class MainWindow : Window
         };
         Closed += (_, _) => { _tray.Dispose(); _viewModel.Dispose(); };
     }
+
+    internal Task InitializeAsync() => _viewModel.InitializeAsync();
 
     internal void ShowWindow()
     {

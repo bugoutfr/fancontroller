@@ -23,8 +23,18 @@ public partial class App : Application
             Exit();
             return;
         }
-        instance.Activated += (_, _) => _window?.DispatcherQueue.TryEnqueue(() => _window.ShowWindow());
+        instance.Activated += (_, activation) =>
+        {
+            if (activation.Data is Windows.ApplicationModel.Activation.ILaunchActivatedEventArgs launch &&
+                launch.Arguments.Split(' ', StringSplitOptions.RemoveEmptyEntries).Contains("--startup"))
+                return;
+            _window?.DispatcherQueue.TryEnqueue(() => _window.ShowWindow());
+        };
         _window = new MainWindow();
-        _window.Activate();
+        if (Environment.GetCommandLineArgs().Contains("--startup"))
+            _window.AppWindow.Hide();
+        else
+            _window.Activate();
+        await _window.InitializeAsync();
     }
 }

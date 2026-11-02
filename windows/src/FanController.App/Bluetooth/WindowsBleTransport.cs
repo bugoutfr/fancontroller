@@ -16,16 +16,27 @@ public sealed class WindowsBleTransport : IBleTransport
     private GattDeviceService? _service;
     private GattCharacteristic? _rx, _tx;
     private bool _closed, _ready;
+    public string? DeviceName { get; private set; }
     public event Action<byte[]>? BytesReceived;
     public event Action<Exception>? Disconnected;
 
-    public async Task ConnectAsync(ulong address, CancellationToken cancellationToken)
+    public static async Task<bool> IsPairedAsync(ulong address, CancellationToken ct)
+    {
+        using var device = await BluetoothLEDevice.FromBluetoothAddressAsync(address).AsTask(ct);
+        return device?.DeviceInformation.Pairing.IsPaired == true;
+    }
+
+    public Task ConnectAsync(ulong address, CancellationToken cancellationToken) =>
+        ConnectAsync(address, cancellationToken, allowPairing: true);
+
+    public async Task ConnectAsync(ulong address, CancellationToken cancellationToken, bool allowPairing)
     {
         var stage = "Ouverture de l’appareil BLE";
         try
         {
             var device = await BluetoothLEDevice.FromBluetoothAddressAsync(address).AsTask(cancellationToken)
                 ?? throw new IOException("Appareil BLE introuvable. Relancez une recherche.");
+            DeviceName = device.Name;
             lock (_sync)
             {
                 if (_closed) { device.Dispose(); throw new IOException("Connexion annulée."); }
@@ -35,6 +46,8 @@ public sealed class WindowsBleTransport : IBleTransport
             stage = "Appairage Windows (maintenir BOOT 2 secondes puis relâcher pour un nouveau PC)";
             if (!device.DeviceInformation.Pairing.IsPaired)
             {
+                if (!allowPairing)
+                    throw new IOException("Le contrôleur mémorisé n’est plus appairé. Reconnectez-le manuellement avec BOOT.");
                 var pairing = device.DeviceInformation.Pairing.Custom;
                 void Confirm(DeviceInformationCustomPairing _, DevicePairingRequestedEventArgs args)
                 {
