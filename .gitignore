@@ -1,0 +1,49 @@
+# PlatformIO builds, downloaded libraries and host-test executables
+.pio/
+
+# .NET / Visual Studio builds, publish outputs and test reports
+[Bb]in/
+[Oo]bj/
+.vs/
+artifacts/
+TestResults/
+*.trx
+*.coverage
+*.coveragexml
+*.user
+*.suo
+*.sln.docstates
+
+# Native compiler outputs (including accidentally built host tests)
+*.exe
+*.dll
+*.pdb
+*.obj
+*.o
+*.elf
+*.bin
+*.hex
+*.map
+*.ilk
+*.exp
+*.lib
+
+# Python build-script caches
+__pycache__/
+*.py[cod]
+
+# Local logs, temporary files and operating-system metadata
+*.log
+*.tmp
+*.bak
+*.swp
+*.swo
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# Local environment values; keep shareable examples
+.env
+.env.*
+!.env.example
+!.env.sample

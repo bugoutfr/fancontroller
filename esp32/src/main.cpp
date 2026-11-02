@@ -1,0 +1,31 @@
+#include <Arduino.h>
+#include "BleTransport.h"
+#include "CommandProcessor.h"
+#include "ConfigurationStore.h"
+#include "ThermalController.h"
+#include "FirmwareVersion.h"
+
+namespace {
+
+controller::ConfigurationStore storage;
+controller::ThermalController thermal;
+controller::CommandProcessor commands(storage, thermal);
+controller::BleTransport bluetooth(commands);
+
+}  // namespace
+
+void setup() {
+    Serial.begin(115200);
+    Serial.printf("FanController firmware %s\n", controller::FirmwareVersion);
+    thermal.begin();
+    storage.begin();
+    bluetooth.begin();
+    Serial.println("Fan controller ready; PWM 25 kHz, BLE JSON protocol v1");
+}
+
+void loop() {
+    const uint32_t now = millis();
+    thermal.update(now, storage.config());
+    bluetooth.update(now);
+    delay(1);
+}

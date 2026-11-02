@@ -1,0 +1,203 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1500" viewBox="0 0 1600 1500">
+  <title>FanController - schema electrique ESP32, quatre ventilateurs PWM et deux NTC</title>
+  <desc>Alimentation Molex 12 V ventilateurs et 5 V VIN/convertisseur. Masse commune. Ponts NTC 10 kilo-ohms beta 3950 avec resistances fixes 10 kilo-ohms vers 3,3 V. TACH avec pull-up 5,2 kilo-ohms vers 3,3 V. GPIO conformes au firmware.</desc>
+  <defs>
+    <style>
+      text { font-family: "Segoe UI", Arial, sans-serif; fill: #172b43; font-size: 19px; }
+      .title { font-size: 34px; font-weight: 700; }
+      .section { font-size: 24px; font-weight: 700; }
+      .small { font-size: 17px; }
+      .tiny { font-size: 16px; }
+      .bold { font-weight: 700; }
+      .box { fill: #fff; stroke: #b6c7d7; stroke-width: 2; }
+      .wire { fill: none; stroke: #244965; stroke-width: 3; }
+      .v12 { fill: #985000; font-weight: 700; }
+      .v5 { fill: #bd2938; font-weight: 700; }
+      .v3 { fill: #007761; font-weight: 700; }
+      .gnd { fill: #263745; font-weight: 700; }
+      .signal { fill: #125da6; font-weight: 700; }
+      .note { fill: #744507; }
+    </style>
+    <g id="ground">
+      <path d="M0 0v12 M-16 12h32 M-10 19h20 M-4 26h8" class="wire"/>
+    </g>
+    <g id="resistor">
+      <path d="M0 0v14 M-9 14h18v50h-18z M0 64v16" class="wire"/>
+    </g>
+    <g id="junction">
+      <circle r="5" fill="#244965"/>
+    </g>
+    <g id="capacitor">
+      <path d="M0 0v25 M-14 25h28 M-14 35h28 M0 35v25" class="wire"/>
+    </g>
+  </defs>
+  <rect width="1600" height="1500" fill="#eef3f8"/>
+  <text x="40" y="52" class="title">FanController | Schéma électrique de câblage</text>
+  <text x="40" y="82" class="small">ESP32 WROOM-32 • 4 ventilateurs 4 fils / 12 V • 2 NTC 10 kΩ / B3950 • BLE Windows</text>
+
+  <rect x="30" y="105" width="1540" height="177" rx="12" class="box"/>
+  <text x="52" y="140" class="section">1. Alimentation — prise MOLEX périphérique 4 contacts</text>
+  <text x="55" y="178" class="v12">JAUNE : +12 V</text>
+  <path d="M270 172H385" stroke="#bc7800" stroke-width="4"/>
+  <text x="400" y="178">+12V_FAN → alimentation des 4 ventilateurs uniquement</text>
+  <text x="55" y="212" class="v5">ROUGE : +5 V</text>
+  <path d="M270 206H385" stroke="#bd2938" stroke-width="4"/>
+  <text x="400" y="212">+5V → VIN de la carte ESP32 et HV du convertisseur</text>
+  <text x="55" y="246" class="gnd">NOIRS : GND</text>
+  <path d="M270 240H385" class="wire"/>
+  <text x="400" y="246">GND commun → ESP32, convertisseur, ventilateurs et sondes</text>
+  <text x="1110" y="177" class="small">Couleurs MOLEX usuelles :</text>
+  <text x="1110" y="205" class="small bold">vérifier les tensions au multimètre.</text>
+  <text x="1110" y="237" class="small">Ne jamais appliquer 12 V à VIN.</text>
+
+  <rect x="30" y="305" width="450" height="480" rx="12" class="box"/>
+  <text x="52" y="342" class="section">2. Carte ESP32</text>
+  <text x="52" y="372" class="small">Vue fonctionnelle, pas un plan des broches</text>
+  <text x="55" y="415" class="v5">+5V → VIN</text>
+  <text x="265" y="415" class="gnd">GND → GND commun</text>
+  <text x="55" y="450" class="v3">3V3 → +3V3</text>
+  <text x="55" y="480" class="small">Le 3,3 V provient du régulateur de la carte.</text>
+  <text x="55" y="524" class="signal">GPIO15 → PWM1_L</text>
+  <text x="55" y="559" class="signal">GPIO16 → PWM2_L</text>
+  <text x="55" y="594" class="signal">GPIO17 → PWM3_L</text>
+  <text x="55" y="629" class="signal">GPIO18 → PWM4_L</text>
+  <text x="55" y="675">GPIO33 ← NTC1_ADC</text>
+  <text x="55" y="710">GPIO32 ← NTC2_ADC</text>
+  <text x="55" y="754" class="small">Entrées TACH : voir section 5.</text>
+
+  <rect x="510" y="305" width="490" height="480" rx="12" class="box"/>
+  <text x="532" y="342" class="section">3. Convertisseur de niveau 4 voies</text>
+  <text x="532" y="372" class="small">Module photographié, type MOSFET bidirectionnel*</text>
+  <text x="535" y="415" class="v3">LV ← +3V3</text>
+  <text x="790" y="415" class="v5">HV ← +5V</text>
+  <text x="535" y="450" class="gnd">Les deux GND → masse commune</text>
+  <text x="535" y="484" class="small">Côté 3,3 V</text>
+  <text x="810" y="484" class="small">Côté 5 V</text>
+  <text x="535" y="524" class="signal">PWM1_L → LV1</text>
+  <path d="M716 518H790" class="wire"/>
+  <text x="805" y="524" class="signal">HV1 → PWM1_H</text>
+  <text x="535" y="559" class="signal">PWM2_L → LV2</text>
+  <path d="M716 553H790" class="wire"/>
+  <text x="805" y="559" class="signal">HV2 → PWM2_H</text>
+  <text x="535" y="594" class="signal">PWM3_L → LV3</text>
+  <path d="M716 588H790" class="wire"/>
+  <text x="805" y="594" class="signal">HV3 → PWM3_H</text>
+  <text x="535" y="629" class="signal">PWM4_L → LV4</text>
+  <path d="M716 623H790" class="wire"/>
+  <text x="805" y="629" class="signal">HV4 → PWM4_H</text>
+  <text x="535" y="675" class="small">Canaux non inverseurs ; PWM = 25 kHz.</text>
+  <text x="535" y="709" class="small">Suivre les sérigraphies LV1…4 / HV1…4 :</text>
+  <text x="535" y="736" class="small">ne pas déduire leur ordre de la position des trous.</text>
+  <text x="535" y="764" class="tiny">* Référence des transistors non lisible sur la photo.</text>
+
+  <text x="1030" y="335" class="section">4. Ventilateurs 12 V / 4 fils</text>
+  <g>
+    <rect x="1030" y="352" width="540" height="98" rx="8" class="box"/>
+    <text x="1045" y="380" class="bold">V1 — régulé par NTC1</text>
+    <text x="1045" y="410" class="small">GND → GND       alimentation → +12V_FAN</text>
+    <text x="1045" y="436" class="small signal">TACH → TACH1       PWM ← PWM1_H (HV1)</text>
+    <rect x="1030" y="464" width="540" height="98" rx="8" class="box"/>
+    <text x="1045" y="492" class="bold">V2 — régulé par NTC1</text>
+    <text x="1045" y="522" class="small">GND → GND       alimentation → +12V_FAN</text>
+    <text x="1045" y="548" class="small signal">TACH → TACH2       PWM ← PWM2_H (HV2)</text>
+    <rect x="1030" y="576" width="540" height="98" rx="8" class="box"/>
+    <text x="1045" y="604" class="bold">V3 — régulé par NTC2</text>
+    <text x="1045" y="634" class="small">GND → GND       alimentation → +12V_FAN</text>
+    <text x="1045" y="660" class="small signal">TACH → TACH3       PWM ← PWM3_H (HV3)</text>
+    <rect x="1030" y="688" width="540" height="98" rx="8" class="box"/>
+    <text x="1045" y="716" class="bold">V4 — régulé par NTC2</text>
+    <text x="1045" y="746" class="small">GND → GND       alimentation → +12V_FAN</text>
+    <text x="1045" y="772" class="small signal">TACH → TACH4       PWM ← PWM4_H (HV4)</text>
+  </g>
+
+  <rect x="30" y="810" width="740" height="365" rx="12" class="box"/>
+  <text x="52" y="849" class="section">5a. Ponts diviseurs des thermistances</text>
+  <text x="135" y="890" class="v3">+3V3</text>
+  <text x="465" y="890" class="v3">+3V3</text>
+  <path d="M165 898V910 M495 898V910" class="wire"/>
+  <use href="#resistor" x="165" y="910"/>
+  <use href="#resistor" x="495" y="910"/>
+  <text x="190" y="952">R1 : 10 kΩ</text>
+  <text x="520" y="952">R2 : 10 kΩ</text>
+  <path d="M165 990V1010H315V1030 M165 1010V1030 M495 990V1010H645V1030 M495 1010V1030" class="wire"/>
+  <use href="#junction" x="165" y="1010"/>
+  <use href="#junction" x="495" y="1010"/>
+  <text x="185" y="1000" class="small signal">NTC1_ADC</text>
+  <text x="185" y="1030" class="small signal">→ GPIO33</text>
+  <text x="515" y="1000" class="small signal">NTC2_ADC</text>
+  <text x="515" y="1030" class="small signal">→ GPIO32</text>
+  <use href="#resistor" x="165" y="1030"/>
+  <use href="#resistor" x="495" y="1030"/>
+  <path d="M147 1090l36 -40 M477 1090l36 -40" class="wire"/>
+  <text x="44" y="1062" class="small">NTC1</text>
+  <text x="44" y="1088" class="small">10 kΩ</text>
+  <text x="44" y="1114" class="small">B3950</text>
+  <text x="374" y="1062" class="small">NTC2</text>
+  <text x="374" y="1088" class="small">10 kΩ</text>
+  <text x="374" y="1114" class="small">B3950</text>
+  <use href="#ground" x="165" y="1110"/>
+  <use href="#ground" x="495" y="1110"/>
+  <use href="#capacitor" x="315" y="1030"/>
+  <use href="#capacitor" x="645" y="1030"/>
+  <path d="M315 1090V1110 M645 1090V1110" class="wire"/>
+  <use href="#ground" x="315" y="1110"/>
+  <use href="#ground" x="645" y="1110"/>
+  <text x="225" y="1062" class="tiny">104</text>
+  <text x="225" y="1086" class="tiny">100 nF</text>
+  <text x="665" y="1062" class="tiny">104</text>
+  <text x="665" y="1086" class="tiny">100 nF</text>
+  <text x="52" y="1155" class="small">NTC nominale à 25 °C : ADC ≈ 1,65 V quand R_NTC = 10 kΩ.</text>
+
+  <rect x="795" y="810" width="775" height="365" rx="12" class="box"/>
+  <text x="817" y="849" class="section">5b. Lectures TACH — quatre pull-up externes</text>
+  <text x="835" y="890" class="v3">+3V3</text>
+  <path d="M850 900H1480 M850 900V925 M1050 900V925 M1250 900V925 M1450 900V925" class="wire"/>
+  <use href="#junction" x="1050" y="900"/>
+  <use href="#junction" x="1250" y="900"/>
+  <use href="#junction" x="1450" y="900"/>
+  <use href="#resistor" x="850" y="925"/>
+  <use href="#resistor" x="1050" y="925"/>
+  <use href="#resistor" x="1250" y="925"/>
+  <use href="#resistor" x="1450" y="925"/>
+  <text x="875" y="966" class="small">5,2 kΩ</text>
+  <text x="1075" y="966" class="small">5,2 kΩ</text>
+  <text x="1275" y="966" class="small">5,2 kΩ</text>
+  <text x="1470" y="966" class="small">5,2 kΩ</text>
+  <path d="M850 1005V1040 M1050 1005V1040 M1250 1005V1040 M1450 1005V1040" class="wire"/>
+  <use href="#junction" x="850" y="1020"/>
+  <use href="#junction" x="1050" y="1020"/>
+  <use href="#junction" x="1250" y="1020"/>
+  <use href="#junction" x="1450" y="1020"/>
+  <path d="M850 1020H925 M1050 1020H1125 M1250 1020H1325 M1450 1020H1525" class="wire"/>
+  <use href="#capacitor" x="925" y="1020"/>
+  <use href="#capacitor" x="1125" y="1020"/>
+  <use href="#capacitor" x="1325" y="1020"/>
+  <use href="#capacitor" x="1525" y="1020"/>
+  <use href="#ground" x="925" y="1080"/>
+  <use href="#ground" x="1125" y="1080"/>
+  <use href="#ground" x="1325" y="1080"/>
+  <use href="#ground" x="1525" y="1080"/>
+  <text x="875" y="1009" class="tiny">100 pF</text>
+  <text x="1075" y="1009" class="tiny">100 pF</text>
+  <text x="1275" y="1009" class="tiny">100 pF</text>
+  <text x="1475" y="1009" class="tiny">100 pF</text>
+  <text x="817" y="1073" class="signal">TACH1</text>
+  <text x="1017" y="1073" class="signal">TACH2</text>
+  <text x="1217" y="1073" class="signal">TACH3</text>
+  <text x="1417" y="1073" class="signal">TACH4</text>
+  <text x="817" y="1130" class="small">GPIO13</text>
+  <text x="1017" y="1130" class="small">GPIO34</text>
+  <text x="1217" y="1130" class="small">GPIO14</text>
+  <text x="1417" y="1130" class="small">GPIO27</text>
+  <text x="817" y="1158" class="tiny">Chaque TACH : ventilateur + GPIO + pull-up + condensateur « 101 » vers GND.</text>
+
+  <rect x="30" y="1195" width="1540" height="240" rx="12" fill="#fff7e8" stroke="#d7a657" stroke-width="2"/>
+  <text x="52" y="1232" class="section note">Précautions et lecture du schéma</text>
+  <text x="52" y="1267" class="small">• Les étiquettes identiques désignent le même fil électrique, même sans trait continu entre les blocs. Tous les GND sont reliés.</text>
+  <text x="52" y="1297" class="small">• Aucun 5 V / 12 V sur les GPIO. Les 4 résistances TACH vont vers 3,3 V, jamais vers 5 V. Pas de convertisseur sur TACH.</text>
+  <text x="52" y="1327" class="small">• Vérifier le brochage des connecteurs des ventilateurs selon leur fiche technique ; ne pas se fier uniquement aux couleurs.</text>
+  <text x="52" y="1357" class="small">• Ne pas cumuler USB alimenté et +5 V MOLEX sur VIN sans vérifier l’isolation de cette carte (risque de retour d’alimentation).</text>
+  <text x="52" y="1387" class="small">• Module MOSFET : vérifier niveaux et fronts PWM à 25 kHz après conversion. GPIO15 est une broche de strapping au démarrage.</text>
+  <text x="52" y="1417" class="small">• Câbler hors tension ; protéger/dimensionner l’alimentation 12 V et les fils selon le courant total des quatre ventilateurs.</text>
+  <text x="40" y="1472" class="small">Schéma fonctionnel — 02/11/2026 • Valeurs et GPIO conformes au firmware FanController • Ne constitue pas un routage PCB.</text>
+</svg>
