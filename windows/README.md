@@ -116,7 +116,8 @@ n'est jamais rejouee : verifier l'etat relu et le brouillon avant de reappliquer
 
 Le formulaire recherche/appairage est masque une fois connecte ; il reste
 accessible si la connexion echoue, si le controleur est absent ou s'il n'est
-plus appaire. **Deconnecter / suspendre la reconnexion** interrompt les
+plus appaire. **Deconnecter** (connecte) ou **Suspendre la reconnexion**
+(hors connexion, lorsque des tentatives sont actives) interrompt les
 tentatives jusqu'a un clic sur Connecter ou au prochain lancement.
 Lancer une recherche manuelle suspend aussi les tentatives pour ne pas
 concurrencer le choix d'un autre appareil.
@@ -130,6 +131,10 @@ de la fenetre et ne sont pas placees dans les marges des cartes.
 - **Tableau de bord** : mesures en direct, securites et version du firmware.
   Les commandes de connexion sont dans Parametres, pas sur le tableau de bord.
 - **Parametres** : courbes par sonde et modes auto/fixe par ventilateur.
+  Tout le bloc de reglage (courbes, ventilateurs, edition et enregistrement)
+  est masque hors connexion et reapparait apres synchronisation reussie.
+  Le brouillon reste conserve pendant la deconnexion ; le reglage de demarrage
+  Windows et le bloc de connexion restent accessibles.
   L'encart Connexion affiche le nom fourni par Windows, l'adresse BLE et
   la puissance du signal RSSI en dBm, recue par l'ESP32 sur la liaison active
   (actualisee a chaque lecture des mesures, toutes les deux secondes environ).
@@ -138,8 +143,14 @@ de la fenetre et ne sont pas placees dans les marges des cartes.
   ESP32, contrairement au scan effectue par Windows ; les valeurs peuvent
   donc differer. Le RSSI du scan n'est jamais reutilise comme signal actuel.
   Ancien firmware ou mesure echouee : signal indique indisponible.
-  Hors connexion, la qualite est indiquee indisponible ;
-  le nom et l'adresse restent ceux du dernier controleur tente.
+  Hors connexion, le nom, l'adresse et le signal sont masques. Un statut court
+  distingue deconnexion, connexion en cours et connexion etablie.
+  L'aide au premier appairage est repliee par defaut ; l'explication du RSSI
+  est disponible en infobulle. Une fois affiche, le formulaire reste visible
+  pendant les tentatives de connexion, avec les actions indisponibles desactivees.
+  Il est masque uniquement apres une connexion reussie.
+  Le bouton de deconnexion/suspension est masque
+  lorsqu'il n'y a aucune liaison ou tentative a interrompre.
   Les confirmations d'application et d'enregistrement sont affichees pres
   des boutons de configuration, pas dans l'encart Connexion.
   Les segments representent l'**interpolation lineaire**, pas des marches :
@@ -163,7 +174,11 @@ de la fenetre et ne sont pas placees dans les marges des cartes.
   Les informations techniques RAM/NVS ne sont pas affichees ; les boutons
   Appliquer RAM / Enregistrer ESP32 restent distincts.
 - **Fermer ou reduire** masque dans la zone de notification et conserve la
-  connexion/acquisition. Double-clic sur l'icone ou menu **Ouvrir** pour revenir.
+  connexion/acquisition. L'icone du systray est turquoise lorsque le controleur
+  est connecte et rouge sinon (demarrage, reconnexion ou suspension).
+  L'infobulle indique aussi connecte/deconnecte ; l'icone de la fenetre et
+  de l'executable reste inchangee.
+  Double-clic sur l'icone ou menu **Ouvrir** pour revenir.
   Relancer l'EXE restaure l'instance deja ouverte, sans seconde acquisition.
   **Quitter** (fenetre ou menu de l'icone) termine reellement le programme.
   La case **Lancer au demarrage de Windows**, dans Parametres, active le

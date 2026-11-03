@@ -122,14 +122,22 @@
                         </Border>
                         <Border Style="{StaticResource Card}">
                             <StackPanel Spacing="12">
-                                <TextBlock Text="Connexion au contrôleur" FontSize="22" FontWeight="SemiBold"/>
-                                <TextBlock Text="{Binding ControllerName}" FontSize="18" FontWeight="SemiBold"
+                                <Grid ColumnSpacing="16">
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                                    <TextBlock Text="Connexion au contrôleur" FontSize="22" FontWeight="SemiBold"/>
+                                    <TextBlock Grid.Column="1" Text="{Binding ConnectionHeading}" VerticalAlignment="Center"
+                                               Foreground="#AABBD2" AutomationProperties.AutomationId="ConnectionHeading"/>
+                                </Grid>
+                                <StackPanel Spacing="6" Visibility="{Binding ConnectedDetailsVisibility}"
+                                            AutomationProperties.AutomationId="ConnectedDetails">
+                                    <TextBlock Text="{Binding ControllerName}" FontSize="18" FontWeight="SemiBold"
                                            AutomationProperties.AutomationId="ControllerName"/>
-                                <TextBlock Text="{Binding ControllerIdentifier}" IsTextSelectionEnabled="True"
+                                    <TextBlock Text="{Binding ControllerIdentifier}" IsTextSelectionEnabled="True"
                                            Foreground="#AABBD2" AutomationProperties.AutomationId="ControllerIdentifier"/>
-                                <TextBlock Text="{Binding LinkQuality}" AutomationProperties.AutomationId="LinkQuality"/>
-                                <TextBlock Text="Puissance du signal reçu sur la liaison active (RSSI). Plus la valeur est proche de zéro, plus le signal est fort."
-                                           TextWrapping="Wrap" Foreground="#AABBD2"/>
+                                    <TextBlock Text="{Binding LinkQuality}" AutomationProperties.AutomationId="LinkQuality"
+                                               ToolTipService.ToolTip="Signal reçu par l’ESP32 : plus la valeur en dBm est proche de zéro, plus le signal est fort."/>
+                                </StackPanel>
+                                <TextBlock Text="{Binding Message}" TextWrapping="Wrap" IsTextSelectionEnabled="True"/>
                                 <StackPanel Orientation="Horizontal" Spacing="10" Visibility="{Binding ConnectionVisibility}">
                                     <Button Content="Rechercher (15 s)" Command="{Binding ScanCommand}" AutomationProperties.AutomationId="ScanButton"/>
                                     <ComboBox ItemsSource="{Binding Devices}" SelectedItem="{Binding SelectedDevice, Mode=TwoWay}"
@@ -138,12 +146,18 @@
                                     <Button Content="Connecter / appairer" Command="{Binding ConnectCommand}"
                                             Style="{ThemeResource AccentButtonStyle}" AutomationProperties.AutomationId="ConnectButton"/>
                                 </StackPanel>
-                                <Button Content="Déconnecter / suspendre la reconnexion" Command="{Binding DisconnectCommand}" AutomationProperties.AutomationId="DisconnectButton"/>
-                                <TextBlock Text="{Binding Message}" TextWrapping="Wrap" IsTextSelectionEnabled="True"/>
-                                <TextBlock Text="Premier appairage : maintenir BOOT 2 s puis relâcher sur l’ESP32 ; connecter sous 60 s. Les connexions suivantes utilisent les clés mémorisées."
-                                           TextWrapping="Wrap" Foreground="#AABBD2" Visibility="{Binding ConnectionVisibility}"/>
+                                <Button Content="{Binding DisconnectLabel}" Command="{Binding DisconnectCommand}"
+                                        Visibility="{Binding DisconnectVisibility}" AutomationProperties.AutomationId="DisconnectButton"/>
+                                <Expander Header="Premier appairage : comment faire ?" HorizontalAlignment="Stretch"
+                                          HorizontalContentAlignment="Stretch"
+                                          Visibility="{Binding ConnectionVisibility}" AutomationProperties.AutomationId="PairingHelp">
+                                    <TextBlock Text="1. Sur l’ESP32, maintenez BOOT 2 secondes puis relâchez.&#x0a;2. Dans les 60 secondes, recherchez le contrôleur, sélectionnez-le puis cliquez sur Connecter / appairer.&#x0a;Les connexions suivantes sont automatiques, sans appui sur BOOT."
+                                               TextWrapping="Wrap" Foreground="#AABBD2" AutomationProperties.AutomationId="PairingInstructions"/>
+                                </Expander>
                             </StackPanel>
                         </Border>
+                        <StackPanel Spacing="16" Visibility="{Binding ConnectedDetailsVisibility}"
+                                    AutomationProperties.AutomationId="ControllerSettings">
                         <TextBlock Text="Courbes de ventilation" FontSize="24" FontWeight="SemiBold"/>
                         <Grid ColumnSpacing="16">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
@@ -236,6 +250,7 @@
                         </StackPanel>
                         <TextBlock Text="Appliquer change la ventilation immédiatement. Enregistrer conserve ces réglages après redémarrage. Les sécurités thermiques restent prioritaires."
                                    TextWrapping="Wrap" Foreground="#AABBD2"/>
+                        </StackPanel>
                     </StackPanel>
                 </ScrollViewer>
             </PivotItem>

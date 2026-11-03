@@ -9,13 +9,15 @@ internal sealed class TrayIcon : IDisposable
     private const uint CallbackMessage = 0x8001;
     private readonly nint _window;
     private readonly nint _icon;
+    private readonly nint _disconnectedIcon;
+    private bool _connected;
     private readonly Action _open, _quit, _hide;
     private readonly DispatcherQueue _dispatcher;
     private readonly SubclassProc _procedure;
     private readonly uint _taskbarCreated = RegisterWindowMessage("TaskbarCreated");
     private bool _disposed;
 
-    public TrayIcon(nint window, DispatcherQueue dispatcher, string iconPath, Action open, Action hide, Action quit)
+    public TrayIcon(nint window, DispatcherQueue dispatcher, string iconPath, string disconnectedIconPath, Action open, Action hide, Action quit)
     {
         _window = window;
         _dispatcher = dispatcher;
@@ -27,15 +29,24 @@ internal sealed class TrayIcon : IDisposable
         _icon = LoadImage(0, iconPath, 1, size, size, 0x10);
         if (_icon == 0)
             throw new Win32Exception(Marshal.GetLastWin32Error(), "Chargement de l’icône FanController impossible.");
+        _disconnectedIcon = LoadImage(0, disconnectedIconPath, 1, size, size, 0x10);
+        if (_disconnectedIcon == 0)
+        {
+            var error = Marshal.GetLastWin32Error();
+            DestroyIcon(_icon);
+            throw new Win32Exception(error, "Chargement de l’icône de déconnexion impossible.");
+        }
         if (!SetWindowSubclass(window, _procedure, 1, 0))
         {
             DestroyIcon(_icon);
+            DestroyIcon(_disconnectedIcon);
             throw new Win32Exception(Marshal.GetLastWin32Error(), "Installation de l’icône de notification impossible.");
         }
         if (!AddIcon())
         {
             RemoveWindowSubclass(window, _procedure, 1);
             DestroyIcon(_icon);
+            DestroyIcon(_disconnectedIcon);
             throw new Win32Exception(Marshal.GetLastWin32Error(), "Création de l’icône de notification impossible.");
         }
     }
@@ -44,13 +55,27 @@ internal sealed class TrayIcon : IDisposable
     {
         Size = (uint)Marshal.SizeOf<NotifyIconData>(), Window = _window, Id = 1,
         Flags = 1 | 2 | 4, Callback = CallbackMessage,
-        Icon = _icon, Tip = "FanController — double-clic pour ouvrir",
+        Icon = _connected ? _icon : _disconnectedIcon,
+        Tip = _connected ? "FanController — connecté — double-clic pour ouvrir" :
+            "FanController — déconnecté — double-clic pour ouvrir",
         Info = "", InfoTitle = ""
     };
     private bool AddIcon()
     {
         var data = Data();
         return Shell_NotifyIcon(0, ref data);
+    }
+
+    public void SetConnected(bool connected)
+    {
+        if (_disposed || _connected == connected) return;
+        _connected = connected;
+        var data = Data();
+        if (!Shell_NotifyIcon(1, ref data))
+        {
+            Diagnostics.Record(new Win32Exception(Marshal.GetLastWin32Error(),
+                "Mise à jour de l’état de l’icône de notification impossible."));
+        }
     }
 
     private nint ProcessMessage(nint window, uint message, nuint wParam, nint lParam, nuint id, nuint data)
@@ -105,6 +130,7 @@ internal sealed class TrayIcon : IDisposable
         Shell_NotifyIcon(2, ref data);
         RemoveWindowSubclass(_window, _procedure, 1);
         DestroyIcon(_icon);
+        DestroyIcon(_disconnectedIcon);
     }
 
     private delegate nint SubclassProc(nint window, uint message, nuint wParam, nint lParam, nuint id, nuint data);

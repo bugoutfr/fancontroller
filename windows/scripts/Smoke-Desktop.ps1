@@ -4,7 +4,8 @@ param(
     [switch]$AutoConnect,
     [switch]$Startup,
     [switch]$RequireRssi,
-    [switch]$EditCurves
+    [switch]$EditCurves,
+    [switch]$Disconnected
 )
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName UIAutomationClient
@@ -88,6 +89,30 @@ try {
         Start-Sleep -Milliseconds 500
     }
     Select-Tab 'SettingsTab'
+    if ($Disconnected) {
+        if ($AutoConnect) { throw 'Disconnected et AutoConnect ne doivent pas etre combines.' }
+        $heading = (Find-Control 'ConnectionHeading').Current.Name
+        if ($heading -like 'Connexion en cours*') {
+            $searchDuringConnection = Find-Control 'ScanButton'
+            if ($searchDuringConnection.Current.IsOffscreen) { throw 'Formulaire masque pendant la reconnexion.' }
+            if ($searchDuringConnection.Current.IsEnabled) { throw 'Recherche active pendant la connexion.' }
+            Write-Output 'Formulaire maintenu visible pendant la reconnexion, actions desactivees.'
+        }
+        $condition = [System.Windows.Automation.PropertyCondition]::new(
+            [System.Windows.Automation.AutomationElement]::AutomationIdProperty, 'DisconnectButton')
+        $pause = $window.FindFirst([System.Windows.Automation.TreeScope]::Descendants, $condition)
+        if ($null -ne $pause -and $pause.Current.IsEnabled) {
+            $pause.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke()
+        }
+        $deadline = (Get-Date).AddSeconds(45)
+        do {
+            Start-Sleep -Milliseconds 250
+            $condition = [System.Windows.Automation.PropertyCondition]::new(
+                [System.Windows.Automation.AutomationElement]::AutomationIdProperty, 'ScanButton')
+            $scanControl = $window.FindFirst([System.Windows.Automation.TreeScope]::Descendants, $condition)
+        } while (($null -eq $scanControl -or -not $scanControl.Current.IsEnabled) -and (Get-Date) -lt $deadline)
+        if ($null -eq $scanControl -or -not $scanControl.Current.IsEnabled) { throw 'Recherche hors connexion indisponible.' }
+    }
     $startupToggle = (Find-Control 'WindowsStartupCheckBox').GetCurrentPattern([System.Windows.Automation.TogglePattern]::Pattern)
     $originalState = $startupToggle.Current.ToggleState
     try {
@@ -107,14 +132,6 @@ try {
     }
     if ($startupToggle.Current.ToggleState -ne $originalState) { throw 'Reglage de demarrage non restaure.' }
     Write-Output 'Case de demarrage Windows et registre verifies ; reglage initial restaure.'
-    $toggle = (Find-Control 'CurveEditingToggle').GetCurrentPattern([System.Windows.Automation.TogglePattern]::Pattern)
-    if ($toggle.Current.ToggleState -ne [System.Windows.Automation.ToggleState]::Off) { throw 'Edition active au lancement.' }
-    $toggle.Toggle()
-    Start-Sleep -Milliseconds 200
-    [void](Find-Control 'CurveEditorTitle')
-    $toggle.Toggle()
-    Start-Sleep -Milliseconds 200
-    if ($toggle.Current.ToggleState -ne [System.Windows.Automation.ToggleState]::Off) { throw 'Edition des courbes non desactivee.' }
     if ($AutoConnect) {
         if ($Scan) { throw 'AutoConnect et Scan ne doivent pas etre combines.' }
         $deadline = (Get-Date).AddSeconds(65)
@@ -145,10 +162,18 @@ try {
         if ($quality -notmatch '-?\d+ dBm' -and $quality -notlike '*1.1.3*') { throw 'Etat du signal radio incorrect.' }
         Write-Output "Nom, adresse BLE et affichage du signal verifies : $quality"
         Write-Output 'Connexion automatique au dernier controleur, formulaire masque ; aucune action de configuration.'
+        $toggle = (Find-Control 'CurveEditingToggle').GetCurrentPattern([System.Windows.Automation.TogglePattern]::Pattern)
+        if ($toggle.Current.ToggleState -ne [System.Windows.Automation.ToggleState]::Off) { throw 'Edition active au lancement.' }
+        $toggle.Toggle()
+        Start-Sleep -Milliseconds 200
+        [void](Find-Control 'CurveEditorTitle')
+        $toggle.Toggle()
+        Start-Sleep -Milliseconds 200
+        if ($toggle.Current.ToggleState -ne [System.Windows.Automation.ToggleState]::Off) { throw 'Edition des courbes non desactivee.' }
     } else {
         $search = Find-Control 'ScanButton'
         if (-not $search.Current.IsEnabled) { throw 'Recherche initialement desactivee.' }
-        foreach ($name in @('ConnectButton', 'DisconnectButton')) {
+        foreach ($name in @('ConnectButton')) {
             if ((Find-Control $name).Current.IsEnabled) { throw "Action activee sans connexion : $name" }
         }
     }
@@ -244,7 +269,7 @@ try {
         $toggle.Toggle()
         Write-Output 'Glisser souris et corbeille de point intermediaire verifies ; brouillon restaure, aucune ecriture BLE.'
     }
-    foreach ($name in $(if ($AutoConnect) { @('ApplyButton') } else { @('ApplyButton', 'SaveButton') })) {
+    foreach ($name in $(if ($AutoConnect) { @('ApplyButton') } else { @() })) {
         if ((Find-Control $name).Current.IsEnabled) { throw "Action activee sans connexion : $name" }
     }
     Select-Tab 'HistoryTab'
@@ -258,6 +283,42 @@ try {
         if (-not $search.Current.IsEnabled) { throw 'Recherche non reactivee apres le scan.' }
         # Aucune connexion ni ecriture GATT.
         Write-Output 'Scan BLE termine sans arret de l application (aucune connexion automatique).'
+    }
+    if ($AutoConnect -or $Disconnected) {
+        if ($AutoConnect) {
+            (Find-Control 'DisconnectButton').GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke()
+            Start-Sleep -Milliseconds 500
+        }
+        $heading = (Find-Control 'ConnectionHeading').Current.Name
+        if ($heading -ne ('D' + [char]0xE9 + 'connect' + [char]0xE9)) { throw 'Statut hors connexion incorrect.' }
+        foreach ($id in @('ControllerName', 'ControllerIdentifier', 'LinkQuality', 'DisconnectButton',
+            'ControllerSettings', 'CurveEditingToggle', 'EditableCurve', 'ApplyButton', 'SaveButton', 'RevertButton')) {
+            $condition = [System.Windows.Automation.PropertyCondition]::new(
+                [System.Windows.Automation.AutomationElement]::AutomationIdProperty, $id)
+            $element = $window.FindFirst([System.Windows.Automation.TreeScope]::Descendants, $condition)
+            if ($null -ne $element -and -not $element.Current.IsOffscreen) {
+                throw "Information/action encore visible hors connexion : $id"
+            }
+        }
+        if (-not (Find-Control 'ScanButton').Current.IsEnabled) { throw 'Recherche inaccessible apres deconnexion.' }
+        $help = (Find-Control 'PairingHelp').GetCurrentPattern([System.Windows.Automation.ExpandCollapsePattern]::Pattern)
+        if ($help.Current.ExpandCollapseState -ne [System.Windows.Automation.ExpandCollapseState]::Collapsed) {
+            throw 'Aide appairage non repliee au lancement.'
+        }
+        $help.Expand()
+        Start-Sleep -Milliseconds 200
+        if ($help.Current.ExpandCollapseState -ne [System.Windows.Automation.ExpandCollapseState]::Expanded) {
+            throw 'Aide appairage inaccessible.'
+        }
+        $helpBounds = (Find-Control 'PairingHelp').Current.BoundingRectangle
+        $instructionsBounds = (Find-Control 'PairingInstructions').Current.BoundingRectangle
+        $inset = $instructionsBounds.Left - $helpBounds.Left
+        $scale = [SmokeWindow]::GetDpiForWindow($handle) / 96.0
+        if ($inset -lt 0 -or $inset -gt 40 * $scale) {
+            throw "Instructions d'appairage non alignees a gauche : retrait de $inset pixels."
+        }
+        $help.Collapse()
+        Write-Output 'Etat deconnecte verifie : identite/signal masques, recherche disponible et suspension masquee.'
     }
     Select-Tab 'DashboardTab'
     [void]$process.CloseMainWindow()

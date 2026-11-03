@@ -36,8 +36,20 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         }
     }
     private bool _showConnection = true;
+    private bool _connecting;
     public Microsoft.UI.Xaml.Visibility ConnectionVisibility => _showConnection
         ? Microsoft.UI.Xaml.Visibility.Visible : Microsoft.UI.Xaml.Visibility.Collapsed;
+    public Microsoft.UI.Xaml.Visibility ConnectedDetailsVisibility => Connected
+        ? Microsoft.UI.Xaml.Visibility.Visible : Microsoft.UI.Xaml.Visibility.Collapsed;
+    public Microsoft.UI.Xaml.Visibility DisconnectVisibility => DisconnectCommand.CanExecute(null)
+        ? Microsoft.UI.Xaml.Visibility.Visible : Microsoft.UI.Xaml.Visibility.Collapsed;
+    public string DisconnectLabel => Connected ? "Déconnecter" : "Suspendre la reconnexion";
+    public string ConnectionHeading => Connected ? "Connecté" : _connecting ? "Connexion en cours…" : "Déconnecté";
+    private void SetConnecting(bool value)
+    {
+        _connecting = value;
+        Changed(nameof(ConnectionHeading));
+    }
     private void ShowConnection(bool value)
     {
         _showConnection = value;
@@ -57,7 +69,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         _localDirty ? "Modifications à appliquer." :
         _remoteDirty ? "Réglages appliqués. Enregistrez-les pour les conserver après redémarrage." :
         "Configuration chargée depuis l’ESP32.";
-    private string _message = "Recherchez votre ESP32 puis connectez-vous. Aucune donnée simulée.";
+    private string _message = "Recherchez un contrôleur pour vous connecter.";
     private string _error = "", _validation = "", _storage = "État distant inconnu.";
     private BleDeviceDisplay? _selectedDevice;
     private ulong _connectedAddress;
@@ -175,6 +187,10 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     {
         foreach (var command in Commands) command?.Refresh();
         foreach (var profile in Profiles) profile.IsEditing = CurveEditing && CanEdit;
+        Changed(nameof(ConnectedDetailsVisibility));
+        Changed(nameof(DisconnectVisibility));
+        Changed(nameof(DisconnectLabel));
+        Changed(nameof(ConnectionHeading));
     }
     private void Dispatch(Action action)
     {
@@ -195,7 +211,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         Devices.Clear();
         SelectedDevice = null;
         Error = "";
-        Message = "Recherche BLE active pendant 15 secondes (annonces et scan responses)…";
+        Message = "Recherche de contrôleurs…";
         var scanner = new BleScanner();
         _scanner = scanner;
         _scanCts = new();
@@ -257,15 +273,16 @@ public sealed class MainViewModel : ObservableObject, IDisposable
                 Message = "Liaison interrompue.";
                 ConfigurationMessage = "Brouillon conservé. Une opération interrompue peut avoir été partiellement appliquée ; vérifiez la configuration après reconnexion.";
             });
+            SetConnecting(true);
             try
             {
-                Message = "Connexion BLE et abonnement aux notifications…";
+                Message = automatic ? "Reconnexion au dernier contrôleur…" : "Connexion au contrôleur…";
                 await transport.ConnectAsync(address, lifetime.Token, allowPairing: !automatic);
                 ControllerName = string.IsNullOrWhiteSpace(transport.DeviceName) ? "Nom du contrôleur indisponible" : transport.DeviceName;
                 // Le délai de découverte ne doit pas raccourcir les 20 s de chaque requête.
                 lifetime.CancelAfter(Timeout.InfiniteTimeSpan);
                 _controller = new(session);
-                Message = "Liaison BLE établie ; lecture de la configuration et des mesures…";
+                Message = "Lecture des réglages…";
                 var state = await _controller.SynchronizeAsync(lifetime.Token);
                 await AcceptRemoteAsync(state, replaceDraft: Profiles.Count == 0);
                 Connected = true;
@@ -278,16 +295,19 @@ public sealed class MainViewModel : ObservableObject, IDisposable
                     Diagnostics.Record(ex);
                     Error = $"Connexion établie, mais mémorisation impossible : {ex.Message}";
                 }
-                Message = "Connecté • appareil appairé, liaison chiffrée.";
+                Message = "Liaison Bluetooth chiffrée.";
                 _ = PollAsync(_controller, session, lifetime.Token);
             }
             catch
             {
-                Message = "Connexion ou lecture initiale impossible. Aucune mesure reçue ; consultez l’erreur et le journal.";
+                Message = _reconnect.Paused
+                    ? "Reconnexion automatique suspendue. Choisissez un contrôleur pour reprendre."
+                    : "Contrôleur inaccessible. Vérifiez son alimentation et sa portée.";
                 CloseSession();
                 ShowConnection(true);
                 throw;
             }
+            finally { SetConnecting(false); }
         });
     }
 
@@ -322,7 +342,9 @@ public sealed class MainViewModel : ObservableObject, IDisposable
                 if (_disposed) return;
                 Error = ex.Message;
                 ShowConnection(true);
-                Message = $"Reconnexion dans {_reconnect.Delay.TotalSeconds:0} s.";
+                Message = _reconnect.Paused
+                    ? "Reconnexion automatique suspendue. Choisissez un contrôleur pour reprendre."
+                    : $"Reconnexion automatique • nouvelle tentative après {_reconnect.Delay.TotalSeconds:0} s.";
             });
         await loop.RunAsync(_applicationLifetime.Token);
     }
@@ -330,6 +352,8 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     private async Task<bool> TryAutoConnectAsync(ulong address, CancellationToken ct)
     {
         Busy = true;
+        SetConnecting(true);
+        Message = "Reconnexion au dernier contrôleur…";
         try
         {
             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
@@ -345,7 +369,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             await ConnectAddressAsync(address, automatic: true);
             return Connected;
         }
-        finally { Busy = false; }
+        finally { SetConnecting(false); Busy = false; }
     }
     private async Task PollAsync(ControllerService controller, ProtocolSession session, CancellationToken ct)
     {
@@ -479,7 +503,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         ShowConnection(true);
         Error = "";
         Storage = "Déconnecté ; état distant non vérifié.";
-        Message = "Déconnexion explicite • reconnexion automatique suspendue.";
+        Message = "Reconnexion automatique suspendue. Choisissez un contrôleur pour reprendre.";
     }
     public void Dispose()
     {

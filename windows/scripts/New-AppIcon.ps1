@@ -1,6 +1,12 @@
+param([switch]$Disconnected)
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName System.Drawing
 $assets = Join-Path $PSScriptRoot '..\src\FanController.App\Assets'
+$name = if ($Disconnected) { 'FanController.Disconnected' } else { 'FanController' }
+$bladeLight = if ($Disconnected) { '#FF8989' } else { '#76E0CD' }
+$bladeDark = if ($Disconnected) { '#E44F59' } else { '#4CC5B5' }
+$hubLight = if ($Disconnected) { '#FFE5E5' } else { '#E1F7F1' }
+$hubDark = if ($Disconnected) { '#EABFC3' } else { '#BFDED7' }
 [void][System.IO.Directory]::CreateDirectory($assets)
 $bitmap = [System.Drawing.Bitmap]::new(1024, 1024)
 $graphics = [System.Drawing.Graphics]::FromImage($bitmap)
@@ -27,7 +33,7 @@ $blade.AddBezier(137, 111, 130, 107, 124, 106, 119, 106)
 $blade.CloseFigure()
 $bladeBrush = [System.Drawing.Drawing2D.LinearGradientBrush]::new(
     [System.Drawing.Point]::new(90, 45), [System.Drawing.Point]::new(170, 120),
-    [System.Drawing.ColorTranslator]::FromHtml('#76E0CD'), [System.Drawing.ColorTranslator]::FromHtml('#4CC5B5'))
+    [System.Drawing.ColorTranslator]::FromHtml($bladeLight), [System.Drawing.ColorTranslator]::FromHtml($bladeDark))
 for ($i = 0; $i -lt 4; $i++) {
     $state = $graphics.Save()
     $graphics.TranslateTransform(128, 128)
@@ -38,7 +44,7 @@ for ($i = 0; $i -lt 4; $i++) {
 }
 $hubBrush = [System.Drawing.Drawing2D.LinearGradientBrush]::new(
     [System.Drawing.Point]::new(110, 108), [System.Drawing.Point]::new(145, 150),
-    [System.Drawing.ColorTranslator]::FromHtml('#E1F7F1'), [System.Drawing.ColorTranslator]::FromHtml('#BFDED7'))
+    [System.Drawing.ColorTranslator]::FromHtml($hubLight), [System.Drawing.ColorTranslator]::FromHtml($hubDark))
 $graphics.FillEllipse($backgroundBrush, 103, 103, 50, 50)
 $graphics.FillEllipse($hubBrush, 110, 110, 36, 36)
 $graphics.Dispose()
@@ -62,11 +68,11 @@ try {
         $stream = [System.IO.MemoryStream]::new()
         $frame.Save($stream, [System.Drawing.Imaging.ImageFormat]::Png)
         $frames += ,$stream.ToArray()
-        if ($size -eq 256) { $frame.Save((Join-Path $assets 'FanController.png'), [System.Drawing.Imaging.ImageFormat]::Png) }
+        if ($size -eq 256) { $frame.Save((Join-Path $assets "$name.png"), [System.Drawing.Imaging.ImageFormat]::Png) }
         $stream.Dispose()
         $frame.Dispose()
     }
-    $file = [System.IO.File]::Create((Join-Path $assets 'FanController.ico'))
+    $file = [System.IO.File]::Create((Join-Path $assets "$name.ico"))
     $writer = [System.IO.BinaryWriter]::new($file)
     try {
         $writer.Write([uint16]0)
@@ -89,4 +95,4 @@ try {
     finally { $writer.Dispose() }
 }
 finally { $bitmap.Dispose() }
-Write-Output "Generated FanController.ico (9 sizes) and FanController.png in $assets"
+Write-Output "Generated $name.ico (9 sizes) and $name.png in $assets"

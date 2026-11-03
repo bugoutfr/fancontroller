@@ -20,14 +20,27 @@ public sealed partial class MainWindow : Window
         AppWindow.SetIcon(iconPath);
         AppWindow.Resize(new SizeInt32(1180, 900));
         _tray = new(WinRT.Interop.WindowNative.GetWindowHandle(this), DispatcherQueue, iconPath,
+            Path.Combine(AppContext.BaseDirectory, "Assets", "FanController.Disconnected.ico"),
             ShowWindow, () => AppWindow.Hide(), Quit);
+        _viewModel.PropertyChanged += ConnectionChanged;
         AppWindow.Closing += (_, args) =>
         {
             if (_quitting) return;
             args.Cancel = true;
             AppWindow.Hide();
         };
-        Closed += (_, _) => { _tray.Dispose(); _viewModel.Dispose(); };
+        Closed += (_, _) =>
+        {
+            _viewModel.PropertyChanged -= ConnectionChanged;
+            _tray.Dispose();
+            _viewModel.Dispose();
+        };
+    }
+
+    private void ConnectionChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs args)
+    {
+        if (args.PropertyName == nameof(MainViewModel.Connected))
+            _tray.SetConnected(_viewModel.Connected);
     }
 
     internal Task InitializeAsync() => _viewModel.InitializeAsync();
