@@ -16,7 +16,7 @@ public sealed partial class MainWindow : Window
 
     public MainWindow()
     {
-        var language = File.Exists(LanguagePath) && File.ReadAllText(LanguagePath).Trim() == "fr" ? "fr" : "en";
+        var language = DetectInitialLanguage();
         Localizer.SetLanguage(language);
         InitializeComponent();
         LanguageSelector.SelectedIndex = language == "fr" ? 1 : 0;
@@ -27,6 +27,7 @@ public sealed partial class MainWindow : Window
 
         _viewModel = new(DispatcherQueue);
         Root.DataContext = _viewModel;
+        Root.Loaded += (_, _) => ApplyLanguage();
 
         var iconPath = Path.Combine(AppContext.BaseDirectory, "Assets", "FanController.ico");
         AppWindow.SetIcon(iconPath);
@@ -60,6 +61,22 @@ public sealed partial class MainWindow : Window
 
     private static string LanguagePath => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "FanController", "language.txt");
+
+    private static string DetectInitialLanguage()
+    {
+        if (File.Exists(LanguagePath))
+        {
+            var saved = File.ReadAllText(LanguagePath).Trim();
+            if (saved is "fr" or "en") return saved;
+        }
+        return System.Globalization.CultureInfo.CurrentUICulture.TwoLetterISOLanguageName.Equals("fr", StringComparison.OrdinalIgnoreCase) ? "fr" : "en";
+    }
+
+    private void PivotSelectionChanged(object sender, Microsoft.UI.Xaml.Controls.SelectionChangedEventArgs e)
+    {
+        ApplyLanguage();
+        DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () => ApplyLanguage());
+    }
 
     private void ConnectionChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs args)
     {

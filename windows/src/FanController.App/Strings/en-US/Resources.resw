@@ -71,6 +71,11 @@
   <data name="History.NoData" xml:space="preserve"><value>No data for this period.</value></data>
   <data name="Chart.Invalid" xml:space="preserve"><value>Curve unavailable: check values and point order.</value></data>
   <data name="Chart.SelectedPointDelete" xml:space="preserve"><value>Delete selected point</value></data>
+  <data name="Chart.TimeAxis" xml:space="preserve"><value>Time</value></data>
+  <data name="Chart.TemperatureAxis" xml:space="preserve"><value>Temperature</value></data>
+  <data name="Chart.ValueAxis" xml:space="preserve"><value>Value</value></data>
+  <data name="Chart.PwmAxis" xml:space="preserve"><value>PWM</value></data>
+  <data name="Chart.PointToolTip" xml:space="preserve"><value>{0}&#x0a;{1}: {2}&#x0a;{3}: {4}</value></data>
   <data name="Tray.TooltipConnected" xml:space="preserve"><value>FanController — connected — double-click to open</value></data>
   <data name="Tray.TooltipDisconnected" xml:space="preserve"><value>FanController — disconnected — double-click to open</value></data>
   <data name="Tray.Open" xml:space="preserve"><value>Open FanController</value></data>
@@ -163,4 +168,17 @@
   <data name="Telemetry.Storage.unavailable" xml:space="preserve"><value>UNAVAILABLE</value></data>
   <data name="Telemetry.Storage.write_error" xml:space="preserve"><value>WRITE ERROR</value></data>
   <data name="Telemetry.Storage.verify_error" xml:space="preserve"><value>VERIFICATION ERROR</value></data>
+  <data name="Chart.AddPoint" xml:space="preserve"><value>Add point to curve</value></data>
+  <data name="Connection.ControllerPendingName" xml:space="preserve"><value>UART controller (pending name)</value></data>
+  <data name="Telemetry.PwmOk" xml:space="preserve"><value>OK</value></data>
+  <data name="Telemetry.PwmFaultState" xml:space="preserve"><value>FAULT</value></data>
+  <data name="Profile.Fans1And2" xml:space="preserve"><value>1 and 2</value></data>
+  <data name="Profile.Fans3And4" xml:space="preserve"><value>3 and 4</value></data>
+  <data name="Validation.ProfilePointCount" xml:space="preserve"><value>A profile must contain 2 to 8 points.</value></data>
+  <data name="Validation.ProfileLimits" xml:space="preserve"><value>Temperature: −20 to 120 °C; PWM: 0 to 100%.</value></data>
+  <data name="Validation.ProfileStrictlyIncreasing" xml:space="preserve"><value>Strictly increasing temperatures and non-decreasing PWM required.</value></data>
+  <data name="Validation.FanLimits" xml:space="preserve"><value>Fan 1 to 4, mode auto/fixed and PWM 0 to 100 required.</value></data>
+  <data name="Validation.IncompatibleFirmwareConfig" xml:space="preserve"><value>Incompatible firmware configuration (version/dimensions).</value></data>
+  <data name="Validation.IncompatibleFirmwareTelemetry" xml:space="preserve"><value>Incompatible firmware telemetry.</value></data>
+  <data name="Validation.InvalidTelemetryValues" xml:space="preserve"><value>Invalid telemetry values.</value></data>
 </root>

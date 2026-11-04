@@ -10,6 +10,7 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Shapes;
 using Windows.Foundation;
+using System.Globalization;
 
 namespace FanController.App.Controls;
 
@@ -53,34 +54,55 @@ public sealed class LineChart : Grid
     private readonly Border _inputSurface = new()
     {
         Background = new SolidColorBrush(Colors.Transparent),
-        IsHitTestVisible = false,
+        IsHitTestVisible = true,
         ManipulationMode = ManipulationModes.None
     };
+    private readonly Border _pointToolTip = new()
+    {
+        Background = Brush("#26364B"),
+        BorderBrush = Brush("#5DD9C1"),
+        BorderThickness = new Thickness(1),
+        CornerRadius = new CornerRadius(6),
+        Padding = new Thickness(10, 7, 10, 7),
+        MaxWidth = 280,
+        HorizontalAlignment = HorizontalAlignment.Left,
+        VerticalAlignment = VerticalAlignment.Top,
+        IsHitTestVisible = false,
+        Visibility = Visibility.Collapsed
+    };
+    private readonly List<(string Name, PlotPoint Point, Point Location)> _hitPoints = [];
+    private int _hoveredPointIndex = -1;
     private PointEditor? _dragPoint;
     private uint? _dragPointer;
     private double _minX, _maxX, _plotWidth, _plotHeight;
+    private readonly Button _addButton;
+    private readonly Button _deleteButton;
     public LineChart()
     {
         Height = 250;
         Children.Add(_canvas);
         Children.Add(_inputSurface);
-        var add = new Button { Content = new FontIcon { Glyph = "\uE710", FontSize = 16 } };
-        add.SetBinding(Button.CommandProperty, new Binding { Path = new PropertyPath("AddCommand") });
-        ToolTipService.SetToolTip(add, "Ajouter un point sur la courbe");
-        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(add, "Ajouter un point sur la courbe");
-        var delete = new Button { Content = new FontIcon { Glyph = "\uE74D", FontSize = 16 } };
-        delete.SetBinding(Button.CommandProperty, new Binding { Path = new PropertyPath("SelectedPoint.RemoveCommand") });
-        delete.SetBinding(Button.IsEnabledProperty, new Binding { Path = new PropertyPath("HasSelectedPoint") });
-        ToolTipService.SetToolTip(delete, Localizer.Get("Chart.SelectedPointDelete", "Delete selected point"));
-        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(delete, Localizer.Get("Chart.SelectedPointDelete", "Delete selected point"));
-        _toolbar.Children.Add(add);
-        _toolbar.Children.Add(delete);
+        Children.Add(_pointToolTip);
+        _addButton = new Button { Content = new FontIcon { Glyph = "\uE710", FontSize = 16 } };
+        _addButton.SetBinding(Button.CommandProperty, new Binding { Path = new PropertyPath("AddCommand") });
+        _deleteButton = new Button { Content = new FontIcon { Glyph = "\uE74D", FontSize = 16 } };
+        _deleteButton.SetBinding(Button.CommandProperty, new Binding { Path = new PropertyPath("SelectedPoint.RemoveCommand") });
+        _deleteButton.SetBinding(Button.IsEnabledProperty, new Binding { Path = new PropertyPath("HasSelectedPoint") });
+        RefreshLocalization();
+        _toolbar.Children.Add(_addButton);
+        _toolbar.Children.Add(_deleteButton);
         Children.Add(_toolbar);
         _inputSurface.PointerPressed += BeginDrag;
         _inputSurface.PointerMoved += Drag;
+        _inputSurface.PointerExited += (_, _) => ClearPointToolTip();
         _inputSurface.PointerReleased += EndDrag;
         _inputSurface.PointerCanceled += EndDrag;
         _inputSurface.PointerCaptureLost += EndDrag;
+        PointerMoved += (_, args) =>
+        {
+            if (_dragPoint is null) UpdatePointToolTip(args.GetCurrentPoint(_canvas).Position);
+        };
+        PointerExited += (_, _) => ClearPointToolTip();
         Unloaded += (_, _) => CancelDrag();
         SizeChanged += (_, _) => Render();
     }
@@ -88,8 +110,19 @@ public sealed class LineChart : Grid
     private void EditingChanged()
     {
         if (!IsEditing) CancelDrag();
-        _inputSurface.IsHitTestVisible = IsEditing;
+        _inputSurface.IsHitTestVisible = true;
         _toolbar.Visibility = IsEditing && !IsTimeAxis ? Visibility.Visible : Visibility.Collapsed;
+        Render();
+    }
+
+    public void RefreshLocalization()
+    {
+        var addText = Localizer.Get("Chart.AddPoint", "Add point to curve");
+        ToolTipService.SetToolTip(_addButton, addText);
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(_addButton, addText);
+        var deleteText = Localizer.Get("Chart.SelectedPointDelete", "Delete selected point");
+        ToolTipService.SetToolTip(_deleteButton, deleteText);
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(_deleteButton, deleteText);
         Render();
     }
 
@@ -116,7 +149,9 @@ public sealed class LineChart : Grid
 
     private void Drag(object sender, PointerRoutedEventArgs args)
     {
-        if (_dragPoint is null || args.Pointer.PointerId != _dragPointer || Editor is null) return;
+        if (_dragPoint is null)
+            return;
+        if (args.Pointer.PointerId != _dragPointer || Editor is null) return;
         if (!IsEditing || !Editor.IsEditing || !Editor.Points.Contains(_dragPoint) || Editor.Curve.Count == 0)
         {
             CancelDrag();
@@ -126,6 +161,51 @@ public sealed class LineChart : Grid
         Editor.MovePoint(_dragPoint, _minX + (position.X - 50) / _plotWidth * (_maxX - _minX),
             100 - (position.Y - 10) / _plotHeight * 100);
         args.Handled = true;
+    }
+
+    private void UpdatePointToolTip(Point position)
+    {
+        var nearest = _hitPoints.Select((point, index) => (Point: point, Index: index,
+                Distance: Math.Pow(position.X - point.Location.X, 2) + Math.Pow(position.Y - point.Location.Y, 2)))
+            .OrderBy(item => item.Distance).FirstOrDefault();
+        if (nearest.Point.Point is null || nearest.Distance > 14 * 14)
+        {
+            ClearPointToolTip();
+            return;
+        }
+        if (_hoveredPointIndex == nearest.Index) return;
+        _hoveredPointIndex = nearest.Index;
+
+        var point = nearest.Point.Point;
+        var xLabel = Localizer.Get(IsTimeAxis ? "Chart.TimeAxis" : "Chart.TemperatureAxis",
+            IsTimeAxis ? "Time" : "Temperature");
+        var yLabel = Localizer.Get(IsTimeAxis ? "Chart.ValueAxis" : "Chart.PwmAxis",
+            IsTimeAxis ? "Value" : "PWM");
+        var xValue = IsTimeAxis
+            ? DateTimeOffset.FromUnixTimeMilliseconds((long)(point.X * 1000)).ToLocalTime().ToString("G", CultureInfo.CurrentCulture)
+            : point.X.ToString("0.#", CultureInfo.CurrentCulture) + " °C";
+        var yValue = point.Y!.Value.ToString("0.#", CultureInfo.CurrentCulture) + (IsTimeAxis ? "" : " %");
+        _pointToolTip.Child = new TextBlock
+        {
+            Text = Localizer.Format("Chart.PointToolTip", "{0}\n{1}: {2}\n{3}: {4}",
+                nearest.Point.Name, xLabel, xValue, yLabel, yValue),
+            TextWrapping = TextWrapping.Wrap
+        };
+        var tipWidth = _pointToolTip.ActualWidth > 0 ? _pointToolTip.ActualWidth : 240;
+        var tipHeight = _pointToolTip.ActualHeight > 0 ? _pointToolTip.ActualHeight : 72;
+        var left = position.X + 14;
+        var top = position.Y + 14;
+        if (left + tipWidth > ActualWidth) left = Math.Max(0, position.X - tipWidth - 14);
+        if (top + tipHeight > ActualHeight) top = Math.Max(0, position.Y - tipHeight - 14);
+        _pointToolTip.Margin = new Thickness(left, top, 0, 0);
+        _pointToolTip.Visibility = Visibility.Visible;
+    }
+
+    private void ClearPointToolTip()
+    {
+        if (_hoveredPointIndex < 0) return;
+        _hoveredPointIndex = -1;
+        _pointToolTip.Visibility = Visibility.Collapsed;
     }
 
     private void EndDrag(object sender, PointerRoutedEventArgs args)
@@ -157,6 +237,8 @@ public sealed class LineChart : Grid
     private void Render()
     {
         _canvas.Children.Clear();
+        _hitPoints.Clear();
+        ClearPointToolTip();
         var width = ActualWidth - 80;
         var height = ActualHeight - 80;
         _plotWidth = width;
@@ -215,6 +297,7 @@ public sealed class LineChart : Grid
                 segment = point.Segment;
                 var location = new Point(50 + (point.X - minX) / (maxX - minX) * width,
                     10 + (maxY - value) / (maxY - minY) * height);
+                _hitPoints.Add((item.Name, point, location));
                 line.Points.Add(location);
                 if (!IsTimeAxis || line.Points.Count == 1)
                 {

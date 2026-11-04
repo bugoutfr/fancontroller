@@ -47,7 +47,7 @@
                 </StackPanel>
             </Grid>
         </Border>
-        <Pivot Grid.Row="2">
+        <Pivot x:Name="MainPivot" Grid.Row="2" SelectionChanged="PivotSelectionChanged">
             <Pivot.Resources>
                 <Thickness x:Key="PivotHeaderItemMargin">28,0,12,0</Thickness>
             </Pivot.Resources>
@@ -207,10 +207,10 @@
                                             <StackPanel Orientation="Horizontal" Spacing="16">
                                                 <TextBlock Text="{Binding Title}" Width="150" VerticalAlignment="Center"/>
                                                 <ComboBox SelectedIndex="{Binding ModeIndex, Mode=TwoWay}" Width="180" loc:Localizer.Key="SettingsFanMode" AutomationProperties.Name="Fan mode">
-                                                    <ComboBoxItem loc:Localizer.Key="SettingsAutomatic" Content="Automatic"/><ComboBoxItem loc:Localizer.Key="SettingsFixed" Content="Fixed"/>
+                                                    <ComboBoxItem loc:Localizer.Key="SettingsAutomatic" Content="{Binding AutomaticText}"/><ComboBoxItem loc:Localizer.Key="SettingsFixed" Content="{Binding FixedText}"/>
                                                 </ComboBox>
                                                 <TextBox Text="{Binding Duty, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Width="90" loc:Localizer.Key="SettingsFixedPwm" AutomationProperties.Name="Fixed PWM percentage"/>
-                                                <TextBlock loc:Localizer.Key="SettingsFixedMode" Text="% (fixed mode)" VerticalAlignment="Center"/>
+                                                <TextBlock loc:Localizer.Key="SettingsFixedMode" Text="{Binding FixedModeText}" VerticalAlignment="Center"/>
                                             </StackPanel>
                                         </Border>
                                     </DataTemplate>
@@ -226,7 +226,7 @@
                                             <Border Style="{StaticResource Card}" Margin="0,0,0,12">
                                                 <StackPanel Spacing="10">
                                                     <TextBlock Text="{Binding Title}" FontWeight="SemiBold"/>
-                                                    <TextBlock loc:Localizer.Key="SettingsPointLabels" Text="Temperature (°C)                       PWM (%)"/>
+                                                    <TextBlock loc:Localizer.Key="SettingsPointLabels" Text="{Binding PointLabelsText}"/>
                                                     <ItemsControl ItemsSource="{Binding Points}">
                                                         <ItemsControl.ItemTemplate>
                                                             <DataTemplate>
@@ -237,8 +237,8 @@
                                                                     </Grid.ColumnDefinitions>
                                                                     <TextBox Text="{Binding Temperature, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Width="180" loc:Localizer.Key="SettingsPointTemperature" AutomationProperties.Name="Point temperature"/>
                                                                     <TextBox Grid.Column="1" Text="{Binding Duty, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Width="140" loc:Localizer.Key="SettingsPointPwm" AutomationProperties.Name="Point PWM"/>
-                                                                    <Button Grid.Column="3" loc:Localizer.Key="SettingsDeletePoint" Command="{Binding RemoveCommand}" ToolTipService.ToolTip="Delete this point"
-                                                                            AutomationProperties.Name="Delete this point">
+                                                                    <Button Grid.Column="3" loc:Localizer.Key="SettingsDeletePoint" Command="{Binding RemoveCommand}" ToolTipService.ToolTip="{Binding DeletePointToolTip}"
+                                                                            AutomationProperties.Name="{Binding DeletePointToolTip}">
                                                                         <FontIcon Glyph="&#xE74D;" FontSize="16"/>
                                                                     </Button>
                                                                 </Grid>
@@ -255,9 +255,15 @@
                             <TextBlock loc:Localizer.Key="SettingsChartHelp" Text="On the chart: + adds a point; select a point, then use the trash button to delete it. Drag points to adjust temperature and PWM. Row delete buttons are also available."
                                        TextWrapping="Wrap" Foreground="#AABBD2"/>
                         </StackPanel>
-                        <TextBlock Text="{Binding SettingsSummary}" TextWrapping="Wrap"/>
-                        <TextBlock Text="{Binding ConfigurationMessage}" TextWrapping="Wrap"
-                                   AutomationProperties.AutomationId="ConfigurationMessage"/>
+                        <Border Background="#1B2B3C" BorderBrush="#304058" BorderThickness="1"
+                                CornerRadius="8" Padding="12,9">
+                            <Grid ColumnSpacing="10">
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                <FontIcon Glyph="&#xE946;" Foreground="#5DD9C1" FontSize="16" VerticalAlignment="Center"/>
+                                <TextBlock Grid.Column="1" Text="{Binding SettingsStatus}" TextWrapping="Wrap"
+                                           VerticalAlignment="Center" AutomationProperties.AutomationId="ConfigurationMessage"/>
+                            </Grid>
+                        </Border>
                         <TextBlock Text="{Binding ValidationMessage}" Foreground="#FFB86B" TextWrapping="Wrap"/>
                         <StackPanel Orientation="Horizontal" Spacing="12">
                             <Button loc:Localizer.Key="SettingsApply" Content="1. Apply to RAM" Command="{Binding ApplyCommand}" Style="{ThemeResource AccentButtonStyle}" AutomationProperties.AutomationId="ApplyButton"/>

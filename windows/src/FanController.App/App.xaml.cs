@@ -43,7 +43,10 @@ public partial class App : Application
         catch (Exception ex)
         {
             Diagnostics.Record(ex);
-            MessageBoxW(IntPtr.Zero, ex.ToString(), "FanController startup error", 0x10);
+            var title = CultureInfo.CurrentUICulture.TwoLetterISOLanguageName.Equals("fr", StringComparison.OrdinalIgnoreCase)
+                ? "Erreur de démarrage FanController"
+                : "FanController startup error";
+            MessageBoxW(IntPtr.Zero, ex.ToString(), title, 0x10);
             Exit();
         }
     }

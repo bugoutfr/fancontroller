@@ -28,6 +28,8 @@ public sealed class PointEditor : ObservableObject
     private string _temperature, _duty;
     public string Temperature { get => _temperature; set => Set(ref _temperature, value); }
     public string Duty { get => _duty; set => Set(ref _duty, value); }
+    public string DeletePointToolTip => Localizer.Get("SettingsDeletePoint.ToolTipService.ToolTip", "Delete this point");
+    public void RefreshLocalization() => Changed(nameof(DeletePointToolTip));
     public PointEditor(CurvePoint point)
     {
         _temperature = point.Temperature.ToString(CultureInfo.CurrentCulture);
@@ -76,8 +78,18 @@ public sealed class ProfileEditor : ObservableObject
     }
     public bool HasSelectedPoint => SelectedPoint is not null;
     public int Sensor { get; }
-    public string Title => Localizer.Format("Profile.Title", $"Probe profile {Sensor} • fans {(Sensor == 1 ? "1 and 2" : "3 and 4")}",
-        Sensor, Sensor == 1 ? "1 and 2" : "3 and 4");
+    public string Title
+    {
+        get
+        {
+            var fans = Sensor == 1
+                ? Localizer.Get("Profile.Fans1And2", "1 and 2")
+                : Localizer.Get("Profile.Fans3And4", "3 and 4");
+            return Localizer.Format("Profile.Title", $"Probe profile {Sensor} • fans {fans}", Sensor, fans);
+        }
+    }
+    public string PointLabelsText => Localizer.Get("SettingsPointLabels.Text", "Temperature (°C)                       PWM (%)");
+    public string DeletePointToolTip => Localizer.Get("SettingsDeletePoint.ToolTipService.ToolTip", "Delete this point");
     public ObservableCollection<PointEditor> Points { get; } = [];
     public AsyncCommand AddCommand { get; }
     public AsyncCommand RemoveCommand { get; }
@@ -98,6 +110,8 @@ public sealed class ProfileEditor : ObservableObject
     {
         Changed(nameof(Title));
         Changed(nameof(Curve));
+        Changed(nameof(PointLabelsText));
+        foreach (var point in Points) point.RefreshLocalization();
     }
     public ProfileEditor(int sensor, CurvePoint[] points)
     {
@@ -190,6 +204,9 @@ public sealed class FanEditor : ObservableObject
 {
     public int Fan { get; }
     public string Title => Localizer.Format("Fan.Name", $"Fan {Fan}", Fan);
+    public string AutomaticText => Localizer.Get("SettingsAutomatic.Content", "Automatic");
+    public string FixedText => Localizer.Get("SettingsFixed.Content", "Fixed");
+    public string FixedModeText => Localizer.Get("SettingsFixedMode.Text", "% (fixed mode)");
     private int _modeIndex;
     private string _duty;
     public int ModeIndex { get => _modeIndex; set => Set(ref _modeIndex, value); }
@@ -200,7 +217,13 @@ public sealed class FanEditor : ObservableObject
         _modeIndex = setting.Mode == "auto" ? 0 : 1;
         _duty = setting.Duty.ToString(CultureInfo.CurrentCulture);
     }
-    public void RefreshLocalization() => Changed(nameof(Title));
+    public void RefreshLocalization()
+    {
+        Changed(nameof(Title));
+        Changed(nameof(AutomaticText));
+        Changed(nameof(FixedText));
+        Changed(nameof(FixedModeText));
+    }
     public FanSetting Read()
     {
         // En auto, le firmware conserve son ancien duty ; le champ n'est pas envoyé.
@@ -213,17 +236,39 @@ public sealed class FanEditor : ObservableObject
     }
 }
 
-public sealed class SensorDisplay(string title) : ObservableObject
+public sealed class SensorDisplay : ObservableObject
 {
-    private string _temperature = "En attente", _details = "Aucune donnée reçue.";
-    private string _summary = "Aucune donnée reçue.";
+    public int Sensor { get; }
+    private string _title;
+    public string Title { get => _title; private set => Set(ref _title, value); }
+    private string _temperature = "", _details = "";
+    private string _summary = "";
     private bool _advanced;
     private bool _hasReadings;
     public bool Advanced { get => _advanced; set { if (Set(ref _advanced, value)) Changed(nameof(DisplayDetails)); } }
     public string DisplayDetails => Advanced ? Details : _summary;
-    public string Title { get; } = title;
     public string Temperature { get => _temperature; private set => Set(ref _temperature, value); }
     public string Details { get => _details; private set => Set(ref _details, value); }
+
+    public SensorDisplay(int sensor, string title)
+    {
+        Sensor = sensor;
+        _title = title;
+        _temperature = Localizer.Get("State.Waiting", "Waiting");
+        _details = Localizer.Get("State.NoData", "No readings received.");
+        _summary = _details;
+    }
+
+    public SensorDisplay(string title) : this(1, title) { }
+
+    public void RefreshLocalization()
+    {
+        Title = Localizer.Format("Sensor.Title", "Probe {0}", Sensor);
+        if (!_hasReadings)
+        {
+            SetWaiting(Localizer.Get("State.Waiting", "Waiting"), Localizer.Get("State.NoData", "No readings received."));
+        }
+    }
 
     public void Update(string temperature, string details, string? summary = null)
     {
@@ -245,17 +290,39 @@ public sealed class SensorDisplay(string title) : ObservableObject
     }
 }
 
-public sealed class FanDisplay(string title) : ObservableObject
+public sealed class FanDisplay : ObservableObject
 {
-    private string _rpm = "En attente", _details = "Aucune donnée reçue.";
-    private string _summary = "Aucune donnée reçue.";
+    public int Fan { get; }
+    private string _title;
+    public string Title { get => _title; private set => Set(ref _title, value); }
+    private string _rpm = "", _details = "";
+    private string _summary = "";
     private bool _advanced;
     private bool _hasReadings;
     public bool Advanced { get => _advanced; set { if (Set(ref _advanced, value)) Changed(nameof(DisplayDetails)); } }
     public string DisplayDetails => Advanced ? Details : _summary;
-    public string Title { get; } = title;
     public string Rpm { get => _rpm; private set => Set(ref _rpm, value); }
     public string Details { get => _details; private set => Set(ref _details, value); }
+
+    public FanDisplay(int fan, string title)
+    {
+        Fan = fan;
+        _title = title;
+        _rpm = Localizer.Get("State.Waiting", "Waiting");
+        _details = Localizer.Get("State.NoData", "No readings received.");
+        _summary = _details;
+    }
+
+    public FanDisplay(string title) : this(1, title) { }
+
+    public void RefreshLocalization()
+    {
+        Title = Localizer.Format("Fan.Title", "Fan {0} • probe {1}", Fan, (Fan - 1) / 2 + 1);
+        if (!_hasReadings)
+        {
+            SetWaiting(Localizer.Get("State.Waiting", "Waiting"), Localizer.Get("State.NoData", "No readings received."));
+        }
+    }
 
     public void Update(string rpm, string details, string? summary = null)
     {

@@ -120,7 +120,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         set { Set(ref _selectedDevice, value); RefreshCommands(); }
     }
     public bool Busy { get => _busy; private set { Set(ref _busy, value); Changed(nameof(CanEdit)); RefreshCommands(); } }
-    public bool Connected { get => _connected; private set { Set(ref _connected, value); Changed(nameof(ConnectionLabel)); Changed(nameof(LinkQuality)); Changed(nameof(CanEdit)); Changed(nameof(SettingsSummary)); RefreshCommands(); } }
+    public bool Connected { get => _connected; private set { Set(ref _connected, value); Changed(nameof(ConnectionLabel)); Changed(nameof(LinkQuality)); Changed(nameof(CanEdit)); Changed(nameof(SettingsSummary)); Changed(nameof(SettingsStatus)); RefreshCommands(); } }
     public bool CanEdit => Connected && !Busy;
     public string ConnectionLabel => Localizer.Get(Connected ? "Connection.Connected" : "Connection.Disconnected",
         Connected ? "Connected • local BLE" : "Disconnected • readings are stale");
@@ -137,23 +137,26 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         _configurationMessageKey = key;
         _configurationMessageFallback = fallback;
         Changed(nameof(ConfigurationMessage));
+        Changed(nameof(SettingsStatus));
     }
     private void ClearConfigurationMessage()
     {
         _configurationMessageKey = "";
         _configurationMessageFallback = "";
         Changed(nameof(ConfigurationMessage));
+        Changed(nameof(SettingsStatus));
     }
     public string Error { get => _error; private set { Set(ref _error, value); Changed(nameof(HasError)); Changed(nameof(ErrorVisibility)); } }
     public bool HasError => !string.IsNullOrEmpty(Error);
     public Microsoft.UI.Xaml.Visibility ErrorVisibility => HasError
         ? Microsoft.UI.Xaml.Visibility.Visible : Microsoft.UI.Xaml.Visibility.Collapsed;
     public string ValidationMessage { get => _validation; private set => Set(ref _validation, value); }
+    public string SettingsStatus => string.IsNullOrEmpty(ConfigurationMessage) ? SettingsSummary : ConfigurationMessage;
     public string Storage { get => _storage; private set => Set(ref _storage, value); }
     public string LocalState => Profiles.Count == 0 ? Localizer.Get("Settings.NoConfiguration", "No configuration has been read.") :
         _localDirty ? Localizer.Get("Settings.LocalChanges", "Local changes NOT applied") :
         Localizer.Get("Settings.DraftMatches", "Draft matches the last configuration read");
-    private string _lastUpdate = "No readings received";
+    private string _lastUpdate = Localizer.Get("State.NoData", "No readings received.");
     public string LastUpdate { get => _lastUpdate; private set => Set(ref _lastUpdate, value); }
     private Telemetry? _lastTelemetry;
     public AsyncCommand ScanCommand { get; }
@@ -172,6 +175,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         Changed(nameof(DisconnectLabel));
         Changed(nameof(ConnectionHeading));
         Changed(nameof(SettingsSummary));
+        Changed(nameof(SettingsStatus));
         Changed(nameof(ControllerIdentifier));
         Changed(nameof(LinkQuality));
         Changed(nameof(ConfigurationMessage));
@@ -179,27 +183,33 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         Changed(nameof(ConnectionLabel));
         Changed(nameof(Message));
         Changed(nameof(LocalState));
+        foreach (var sensor in Sensors) sensor.RefreshLocalization();
+        foreach (var fan in FanReadings) fan.RefreshLocalization();
         if (_lastTelemetry is not null) UpdateTelemetry(_lastTelemetry);
         else
         {
             var waiting = Localizer.Get("State.Waiting", "Waiting");
             var noData = Localizer.Get("State.NoData", "No readings received.");
+            LastUpdate = noData;
             foreach (var sensor in Sensors) sensor.SetWaiting(waiting, noData);
             foreach (var fan in FanReadings) fan.SetWaiting(waiting, noData);
         }
         foreach (var profile in Profiles) profile.RefreshLocalization();
         foreach (var fan in Fans) fan.RefreshLocalization();
         History.RefreshLocalization();
+        if (!string.IsNullOrEmpty(ValidationMessage)) DraftChanged();
     }
 
     public MainViewModel(DispatcherQueue dispatcher)
     {
         _dispatcher = dispatcher;
+        Validation.MessageResolver = (key, fallback) => Localizer.Get(key, fallback);
+        AdvertisementIndexDefaults.PendingNameResolver = () => Localizer.Get("Connection.ControllerPendingName", "UART controller (pending name)");
         History = new(dispatcher);
         for (var sensor = 1; sensor <= 2; sensor++)
-            Sensors.Add(new(Localizer.Format("Sensor.Title", "Probe {0}", sensor)));
+            Sensors.Add(new(sensor, Localizer.Format("Sensor.Title", "Probe {0}", sensor)));
         for (var fan = 1; fan <= 4; fan++)
-            FanReadings.Add(new(Localizer.Format("Fan.Title", "Fan {0} • probe {1}", fan, (fan - 1) / 2 + 1)));
+            FanReadings.Add(new(fan, Localizer.Format("Fan.Title", "Fan {0} • probe {1}", fan, (fan - 1) / 2 + 1)));
         ScanCommand = Command(ScanAsync, () => !Busy && !Connected && !_scanning);
         ConnectCommand = Command(ConnectAsync, () => !Busy && !Connected && SelectedDevice is not null);
         DisconnectCommand = Command(() => { Disconnect(); return Task.CompletedTask; },
@@ -510,6 +520,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         catch (InvalidDataException ex) { ValidationMessage = ex.Message; _localDirty = true; }
         Changed(nameof(LocalState));
         Changed(nameof(SettingsSummary));
+        Changed(nameof(SettingsStatus));
         RefreshCommands();
     }
     private void UpdateTelemetry(Telemetry status)
@@ -521,6 +532,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         _remoteDirty = status.Dirty;
         _remoteStorage = status.Storage;
         Changed(nameof(SettingsSummary));
+        Changed(nameof(SettingsStatus));
         _lastTelemetry = status;
         _firmwareVersion = string.IsNullOrWhiteSpace(status.FirmwareVersion) ? null : status.FirmwareVersion;
         Changed(nameof(Firmware));
@@ -542,9 +554,11 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             var mode = Localizer.Get(fan.Mode == "auto" ? "Telemetry.Automatic" : "Telemetry.Fixed", fan.Mode == "auto" ? "Automatic" : "Fixed");
             var boost = Localizer.Get(fan.Boost ? "Telemetry.Active" : "Telemetry.Inactive", fan.Boost ? "active" : "inactive");
             var pwmFault = fan.PwmOk ? "" : Localizer.Get("Telemetry.PwmFault", " • PWM OUTPUT FAULT");
-            FanReadings[fan.Fan - 1].Update($"{fan.Rpm:N0} RPM",
+            var pwmStatus = fan.PwmOk ? Localizer.Get("Telemetry.PwmOk", "OK") : Localizer.Get("Telemetry.PwmFaultState", "FAULT");
+            var rpmText = Localizer.Format("Telemetry.Rpm", "{0:N0} RPM", fan.Rpm);
+            FanReadings[fan.Fan - 1].Update(rpmText,
                 Localizer.Format("Telemetry.FanDetails", "{0} • fixed {1:F1} % • target {2:F1} % • PWM {3:F1} %\nPWM output: {4} • boost: {5}",
-                    mode, fan.FixedDuty, fan.TargetDuty, fan.AppliedDuty, fan.PwmOk ? "OK" : "FAULT", boost),
+                    mode, fan.FixedDuty, fan.TargetDuty, fan.AppliedDuty, pwmStatus, boost),
                 Localizer.Format("Telemetry.FanSummary", "{0} • PWM {1:F1} %{2}", mode, fan.AppliedDuty, pwmFault));
         }
     }

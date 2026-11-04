@@ -5,6 +5,11 @@ public sealed record BleCandidate(ulong Address, string Name, short Rssi)
     public string Label => $"{Name} — {Address:X12} — {Rssi} dBm";
 }
 
+public static class AdvertisementIndexDefaults
+{
+    public static Func<string> PendingNameResolver { get; set; } = () => "UART controller (pending name)";
+}
+
 /// <summary>Fusionne annonce et scan response par adresse, sans filtre qui perdrait le nom.</summary>
 public sealed class AdvertisementIndex
 {
@@ -17,7 +22,7 @@ public sealed class AdvertisementIndex
         var service = hasService || previous.Service;
         _seen[address] = (mergedName, service);
         return service || mergedName == "ESP32-FanController"
-            ? new(address, string.IsNullOrEmpty(mergedName) ? "Contrôleur UART (nom en attente)" : mergedName, rssi)
+            ? new(address, string.IsNullOrEmpty(mergedName) ? AdvertisementIndexDefaults.PendingNameResolver() : mergedName, rssi)
             : null;
     }
 }

@@ -97,7 +97,7 @@ public sealed class WindowsBleTransport : IBleTransport
             tx.ProtectionLevel = GattProtectionLevel.EncryptionRequired;
             lock (_sync)
             {
-                if (_closed) throw new IOException("Connexion annulée.");
+                if (_closed) throw new IOException("Connection was cancelled.");
                 _rx = rx;
                 _tx = tx;
                 tx.ValueChanged += ValueChanged;
@@ -106,11 +106,11 @@ public sealed class WindowsBleTransport : IBleTransport
             stage = "Subscribing to TX notifications";
             var subscription = await tx.WriteClientCharacteristicConfigurationDescriptorWithResultAsync(
                 GattClientCharacteristicConfigurationDescriptorValue.Notify).AsTask(cancellationToken);
-            Check(subscription.Status, "Abonnement aux notifications TX", subscription.ProtocolError);
+            Check(subscription.Status, "Subscribing to TX notifications", subscription.ProtocolError);
             lock (_sync)
             {
                 if (_closed || device.ConnectionStatus != BluetoothConnectionStatus.Connected)
-                throw new IOException("BLE connection was interrupted.");
+                    throw new IOException("BLE connection was interrupted.");
                 _ready = true;
             }
         }
@@ -139,7 +139,7 @@ public sealed class WindowsBleTransport : IBleTransport
         writer.WriteBytes(bytes.ToArray());
         var result = await rx.WriteValueWithResultAsync(writer.DetachBuffer(),
             GattWriteOption.WriteWithResponse).AsTask(cancellationToken);
-        Check(result.Status, "Écriture RX", result.ProtocolError);
+        Check(result.Status, "Writing RX", result.ProtocolError);
     }
     private void ValueChanged(GattCharacteristic sender, GattValueChangedEventArgs args)
     {
@@ -157,7 +157,7 @@ public sealed class WindowsBleTransport : IBleTransport
         bool ready;
         lock (_sync) ready = _ready && !_closed;
         if (ready && sender.ConnectionStatus == BluetoothConnectionStatus.Disconnected)
-            Fail(new IOException("Liaison BLE perdue. Reconnectez-vous pour resynchroniser."));
+            Fail(new IOException("BLE link lost. Reconnect to resynchronize."));
     }
     private void Fail(Exception ex) { Disconnect(); Disconnected?.Invoke(ex); }
     private static void Check(GattCommunicationStatus status, string action, byte? protocolError = null)
