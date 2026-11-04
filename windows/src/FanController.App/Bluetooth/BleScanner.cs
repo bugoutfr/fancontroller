@@ -1,4 +1,5 @@
 using FanController.Core;
+using FanController.App.Localization;
 using Windows.Devices.Bluetooth.Advertisement;
 
 namespace FanController.App.Bluetooth;
@@ -27,7 +28,7 @@ public sealed class BleScanner : IDisposable
     private void Stopped(BluetoothLEAdvertisementWatcher sender, BluetoothLEAdvertisementWatcherStoppedEventArgs args)
     {
         if (args.Error != Windows.Devices.Bluetooth.BluetoothError.Success)
-            Failed?.Invoke($"BLE scan stopped: {args.Error}. Check Bluetooth radio and Windows permissions.");
+            Failed?.Invoke(Localizer.Format("Ble.ScanStopped", "BLE scan stopped: {0}. Check Bluetooth radio and Windows permissions.", args.Error));
     }
     public void Dispose()
     {

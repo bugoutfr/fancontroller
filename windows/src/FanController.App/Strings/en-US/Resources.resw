@@ -1,0 +1,166 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <data name="AppTitle" xml:space="preserve"><value>FanController — Local BLE control</value></data>
+  <data name="ErrorBannerTitle.Text" xml:space="preserve"><value>Operation interrupted</value></data>
+  <data name="DashboardTab.Header" xml:space="preserve"><value>Dashboard</value></data>
+  <data name="DashboardCooling.Text" xml:space="preserve"><value>Cooling</value></data>
+  <data name="DashboardOfflineNote.Text" xml:space="preserve"><value>Values remain visible after a disconnect, but are no longer current. The ESP32 continues regulating independently.</value></data>
+  <data name="HistoryTab.Header" xml:space="preserve"><value>History</value></data>
+  <data name="HistoryControllerPicker.PlaceholderText" xml:space="preserve"><value>Controller history</value></data>
+  <data name="HistoryRange.AutomationProperties.Name" xml:space="preserve"><value>History range</value></data>
+  <data name="HistoryRangeHour.Content" xml:space="preserve"><value>Last hour</value></data>
+  <data name="HistoryRangeDay.Content" xml:space="preserve"><value>Last 24 hours</value></data>
+  <data name="HistoryRangeWeek.Content" xml:space="preserve"><value>Last 7 days</value></data>
+  <data name="HistoryRangeMonth.Content" xml:space="preserve"><value>Last 30 days</value></data>
+  <data name="HistoryRefresh.Content" xml:space="preserve"><value>Refresh</value></data>
+  <data name="HistoryTemperatures.Text" xml:space="preserve"><value>Temperatures • °C</value></data>
+  <data name="HistorySpeeds.Text" xml:space="preserve"><value>Speeds • RPM</value></data>
+  <data name="HistoryNote.Text" xml:space="preserve"><value>Only measurements received while connected are recorded, including when the window is hidden. Offline periods are not reconstructed.</value></data>
+  <data name="SettingsTab.Header" xml:space="preserve"><value>Settings</value></data>
+  <data name="SettingsLanguage.Text" xml:space="preserve"><value>Language</value></data>
+  <data name="SettingsStartup.Content" xml:space="preserve"><value>Launch when Windows starts</value></data>
+  <data name="SettingsStartupNote.Text" xml:space="preserve"><value>At sign-in, the app starts in the system tray and reconnects to the last controller.</value></data>
+  <data name="SettingsConnection.Text" xml:space="preserve"><value>Controller connection</value></data>
+  <data name="SettingsLinkQuality.ToolTipService.ToolTip" xml:space="preserve"><value>Signal received by the ESP32: values closer to zero dBm indicate a stronger signal.</value></data>
+  <data name="SettingsScan.Content" xml:space="preserve"><value>Search (15 s)</value></data>
+  <data name="SettingsControllerPicker.PlaceholderText" xml:space="preserve"><value>Select a controller</value></data>
+  <data name="SettingsControllerPicker.AutomationProperties.Name" xml:space="preserve"><value>BLE controller</value></data>
+  <data name="SettingsConnect.Content" xml:space="preserve"><value>Connect / pair</value></data>
+  <data name="SettingsPairingHelp.Header" xml:space="preserve"><value>First-time pairing instructions</value></data>
+  <data name="SettingsPairingInstructions.Text" xml:space="preserve"><value>1. On the ESP32, hold BOOT for 2 seconds, then release.&#x0a;2. Within 60 seconds, search for the controller, select it, then click Connect / pair.&#x0a;Later connections are automatic; BOOT is not needed again.</value></data>
+  <data name="SettingsCurves.Text" xml:space="preserve"><value>Fan curves</value></data>
+  <data name="SettingsCurvesNote.Text" xml:space="preserve"><value>The curve is linearly interpolated between points. Enable editing to change curves; disabling it keeps the draft.</value></data>
+  <data name="SettingsCurveToggle.On" xml:space="preserve"><value>Edit</value></data>
+  <data name="SettingsCurveToggle.Off" xml:space="preserve"><value>View</value></data>
+  <data name="SettingsCurveToggle.AutomationProperties.Name" xml:space="preserve"><value>Curve editing</value></data>
+  <data name="SettingsFanControl.Text" xml:space="preserve"><value>Fan control</value></data>
+  <data name="SettingsFanMode.AutomationProperties.Name" xml:space="preserve"><value>Fan mode</value></data>
+  <data name="SettingsAutomatic.Content" xml:space="preserve"><value>Automatic</value></data>
+  <data name="SettingsFixed.Content" xml:space="preserve"><value>Fixed</value></data>
+  <data name="SettingsFixedPwm.AutomationProperties.Name" xml:space="preserve"><value>Fixed PWM percentage</value></data>
+  <data name="SettingsFixedMode.Text" xml:space="preserve"><value>% (fixed mode)</value></data>
+  <data name="SettingsEditPoints.Text" xml:space="preserve"><value>Edit points</value></data>
+  <data name="SettingsPointLabels.Text" xml:space="preserve"><value>Temperature (°C)                       PWM (%)</value></data>
+  <data name="SettingsPointTemperature.AutomationProperties.Name" xml:space="preserve"><value>Point temperature</value></data>
+  <data name="SettingsPointPwm.AutomationProperties.Name" xml:space="preserve"><value>Point PWM</value></data>
+  <data name="SettingsDeletePoint.ToolTipService.ToolTip" xml:space="preserve"><value>Delete this point</value></data>
+  <data name="SettingsDeletePoint.AutomationProperties.Name" xml:space="preserve"><value>Delete this point</value></data>
+  <data name="SettingsPointConstraints.Text" xml:space="preserve"><value>2 to 8 points • −20 to 120 °C, strictly increasing • PWM 0 to 100%, non-decreasing.</value></data>
+  <data name="SettingsChartHelp.Text" xml:space="preserve"><value>On the chart: + adds a point; select a point, then use the trash button to delete it. Drag points to adjust temperature and PWM. Row delete buttons are also available.</value></data>
+  <data name="SettingsApply.Content" xml:space="preserve"><value>1. Apply to RAM</value></data>
+  <data name="SettingsSave.Content" xml:space="preserve"><value>2. Save to ESP32</value></data>
+  <data name="SettingsRevert.Content" xml:space="preserve"><value>Discard changes</value></data>
+  <data name="SettingsSafetyNote.Text" xml:space="preserve"><value>Apply changes fan behavior immediately. Save keeps these settings after restart. Thermal safety always takes priority.</value></data>
+  <data name="FooterNote.Text" xml:space="preserve"><value>Close or minimize → system tray • acquisition continues while the PC is connected</value></data>
+  <data name="FooterQuit.Content" xml:space="preserve"><value>Quit</value></data>
+  <data name="State.Waiting" xml:space="preserve"><value>Waiting</value></data>
+  <data name="State.NoData" xml:space="preserve"><value>No readings received.</value></data>
+  <data name="State.Unavailable" xml:space="preserve"><value>Unavailable</value></data>
+  <data name="Sensor.Title" xml:space="preserve"><value>Probe {0}</value></data>
+  <data name="Fan.Title" xml:space="preserve"><value>Fan {0} • probe {1}</value></data>
+  <data name="Fan.Name" xml:space="preserve"><value>Fan {0}</value></data>
+  <data name="Profile.Title" xml:space="preserve"><value>Probe profile {0} • fans {1}</value></data>
+  <data name="Plot.PwmLabel" xml:space="preserve"><value>PWM (%) • linear interpolation</value></data>
+  <data name="History.ProbeSeries" xml:space="preserve"><value>Probe {0} • °C</value></data>
+  <data name="History.FanSeries" xml:space="preserve"><value>Fan {0} • RPM</value></data>
+  <data name="History.Controller" xml:space="preserve"><value>Controller {0:X12}</value></data>
+  <data name="History.InitialMessage" xml:space="preserve"><value>Local history • 30-day retention</value></data>
+  <data name="History.ReadError" xml:space="preserve"><value>Unable to read history: {0}</value></data>
+  <data name="History.WriteError" xml:space="preserve"><value>History NOT saved: {0}</value></data>
+  <data name="History.RecordedMessage" xml:space="preserve"><value>Readings received and saved on this PC • 30 days • gaps are not interpolated</value></data>
+  <data name="History.NoData" xml:space="preserve"><value>No data for this period.</value></data>
+  <data name="Chart.Invalid" xml:space="preserve"><value>Curve unavailable: check values and point order.</value></data>
+  <data name="Chart.SelectedPointDelete" xml:space="preserve"><value>Delete selected point</value></data>
+  <data name="Tray.TooltipConnected" xml:space="preserve"><value>FanController — connected — double-click to open</value></data>
+  <data name="Tray.TooltipDisconnected" xml:space="preserve"><value>FanController — disconnected — double-click to open</value></data>
+  <data name="Tray.Open" xml:space="preserve"><value>Open FanController</value></data>
+  <data name="Tray.Quit" xml:space="preserve"><value>Quit (stop acquisition)</value></data>
+  <data name="Ble.ScanStopped" xml:space="preserve"><value>BLE scan stopped: {0}. Check Bluetooth radio and Windows permissions.</value></data>
+  <data name="Validation.Numeric" xml:space="preserve"><value>Enter numeric temperature and PWM values.</value></data>
+  <data name="Validation.PointCoordinates" xml:space="preserve"><value>Point coordinates must be finite numbers.</value></data>
+  <data name="Validation.NewPointUnavailable" xml:space="preserve"><value>No interval is available for a new point.</value></data>
+  <data name="Validation.MinimumProfilePoints" xml:space="preserve"><value>A profile must contain at least two points.</value></data>
+  <data name="Validation.ChartEditingDisabled" xml:space="preserve"><value>Chart editing is disabled.</value></data>
+  <data name="Validation.PointNotInProfile" xml:space="preserve"><value>This point does not belong to the profile.</value></data>
+  <data name="Validation.FixedPwm" xml:space="preserve"><value>Fixed PWM must be a number from 0 to 100%.</value></data>
+  <data name="Error.WindowsStartup" xml:space="preserve"><value>Windows startup: {0}</value></data>
+  <data name="Error.ConnectionPreference" xml:space="preserve"><value>Could not read connection preference: {0}</value></data>
+  <data name="Error.RememberController" xml:space="preserve"><value>Connected, but could not remember the controller: {0}</value></data>
+  <data name="Error.ReconnectPaused" xml:space="preserve"><value>Automatic reconnection paused. Choose a controller to resume.</value></data>
+  <data name="Error.Retrying" xml:space="preserve"><value>Automatic reconnection • retrying in {0:0} s.</value></data>
+  <data name="Error.NoController" xml:space="preserve"><value>No controller found. Check power, Bluetooth, and range.</value></data>
+  <data name="Error.ControllerUnavailable" xml:space="preserve"><value>Controller unavailable. Check its power and range.</value></data>
+  <data name="Connection.SearchPrompt" xml:space="preserve"><value>Search for a controller to connect.</value></data>
+  <data name="Connection.Searching" xml:space="preserve"><value>Searching for controllers…</value></data>
+  <data name="Connection.SearchComplete" xml:space="preserve"><value>Search complete.</value></data>
+  <data name="Connection.ReadingName" xml:space="preserve"><value>Reading controller name…</value></data>
+  <data name="Connection.NameUnavailable" xml:space="preserve"><value>Controller name unavailable</value></data>
+  <data name="Connection.AutoConnecting" xml:space="preserve"><value>Reconnecting to the last controller…</value></data>
+  <data name="Connection.Connecting" xml:space="preserve"><value>Connecting to controller…</value></data>
+  <data name="Connection.ReadingSettings" xml:space="preserve"><value>Reading settings…</value></data>
+  <data name="Connection.Established" xml:space="preserve"><value>Encrypted Bluetooth link established.</value></data>
+  <data name="Connection.ManualRequired" xml:space="preserve"><value>The last controller is no longer paired in Windows. Manual connection required.</value></data>
+  <data name="Connection.LinkInterrupted" xml:space="preserve"><value>Link interrupted.</value></data>
+  <data name="Connection.RemoteStateUncertain" xml:space="preserve"><value>Remote state is uncertain; reconnect and reread it.</value></data>
+  <data name="Connection.DisconnectedStorage" xml:space="preserve"><value>Disconnected; remote state not verified.</value></data>
+  <data name="Connection.Address" xml:space="preserve"><value>Bluetooth address: {0}</value></data>
+  <data name="Connection.LinkInactive" xml:space="preserve"><value>Link inactive • quality unavailable</value></data>
+  <data name="Connection.Rssi" xml:space="preserve"><value>Signal received by ESP32: {0} dBm</value></data>
+  <data name="Connection.RssiTemporaryUnavailable" xml:space="preserve"><value>Radio signal temporarily unavailable</value></data>
+  <data name="Connection.RssiFirmwareUnavailable" xml:space="preserve"><value>Radio signal unavailable • firmware 1.1.3 or later required</value></data>
+  <data name="Connection.ControllerMissing" xml:space="preserve"><value>No controller connected</value></data>
+  <data name="Connection.Connected" xml:space="preserve"><value>Connected • local BLE</value></data>
+  <data name="Connection.Disconnected" xml:space="preserve"><value>Disconnected • readings are stale</value></data>
+  <data name="Connection.HeadingConnected" xml:space="preserve"><value>Connected</value></data>
+  <data name="Connection.HeadingConnecting" xml:space="preserve"><value>Connecting…</value></data>
+  <data name="Connection.HeadingDisconnected" xml:space="preserve"><value>Disconnected</value></data>
+  <data name="Action.Disconnect" xml:space="preserve"><value>Disconnect</value></data>
+  <data name="Action.PauseReconnect" xml:space="preserve"><value>Pause reconnection</value></data>
+  <data name="Settings.NotRefreshed" xml:space="preserve"><value>Configuration not refreshed: connect the controller.</value></data>
+  <data name="Settings.SaveProblem" xml:space="preserve"><value>ESP32 save problem: {0}.</value></data>
+  <data name="Settings.ChangesToApply" xml:space="preserve"><value>Changes need to be applied.</value></data>
+  <data name="Settings.SaveAfterApply" xml:space="preserve"><value>Settings applied. Save them to keep them after restart.</value></data>
+  <data name="Settings.Loaded" xml:space="preserve"><value>Configuration loaded from the ESP32.</value></data>
+  <data name="Settings.RemoteUnknown" xml:space="preserve"><value>Remote state unknown.</value></data>
+  <data name="Settings.NoConfiguration" xml:space="preserve"><value>No configuration has been read.</value></data>
+  <data name="Settings.LocalChanges" xml:space="preserve"><value>Local changes NOT applied</value></data>
+  <data name="Settings.DraftMatches" xml:space="preserve"><value>Draft matches the last configuration read</value></data>
+  <data name="Settings.RereadDraftKept" xml:space="preserve"><value>Configuration reread; draft retained. No changes were reapplied.</value></data>
+  <data name="Settings.DraftDiscarded" xml:space="preserve"><value>Changes discarded without writing to the ESP32.</value></data>
+  <data name="Settings.AppliedRam" xml:space="preserve"><value>Configuration applied to RAM. Save to the ESP32 to keep it after restart.</value></data>
+  <data name="Settings.Saved" xml:space="preserve"><value>Configuration saved to and reread from the ESP32.</value></data>
+  <data name="Settings.DefaultsRam" xml:space="preserve"><value>Factory defaults applied to RAM. Saving to the ESP32 is a separate step.</value></data>
+  <data name="Settings.RemoteUncertain" xml:space="preserve"><value>Remote state is uncertain; reconnect and reread it.</value></data>
+  <data name="Settings.InterruptedDraft" xml:space="preserve"><value>Draft retained. An interrupted operation may have been partly applied; check the configuration after reconnecting.</value></data>
+  <data name="Firmware.Disconnected" xml:space="preserve"><value>Firmware: disconnected</value></data>
+  <data name="Firmware.Legacy" xml:space="preserve"><value>Legacy firmware • version not published</value></data>
+  <data name="Firmware.Version" xml:space="preserve"><value>Firmware {0}</value></data>
+  <data name="Telemetry.LastReading" xml:space="preserve"><value>Last reading: {0:HH:mm:ss} • uptime: {1:g}</value></data>
+  <data name="Telemetry.RemoteStorage" xml:space="preserve"><value>Remote RAM: {0} • NVS: {1} • available: {2}</value></data>
+  <data name="Telemetry.NotSaved" xml:space="preserve"><value>NOT saved</value></data>
+  <data name="Telemetry.SavedUnchanged" xml:space="preserve"><value>saved / unchanged</value></data>
+  <data name="Telemetry.Yes" xml:space="preserve"><value>yes</value></data>
+  <data name="Telemetry.No" xml:space="preserve"><value>no</value></data>
+  <data name="Telemetry.SensorDetails" xml:space="preserve"><value>{0:F1} mV • {1} • safety: {2}</value></data>
+  <data name="Telemetry.SensorSummary" xml:space="preserve"><value>{0} • safety: {1}</value></data>
+  <data name="Telemetry.FanDetails" xml:space="preserve"><value>{0} • fixed {1:F1} % • target {2:F1} % • PWM {3:F1} %&#x0a;PWM output: {4} • boost: {5}</value></data>
+  <data name="Telemetry.FanSummary" xml:space="preserve"><value>{0} • PWM {1:F1} %{2}</value></data>
+  <data name="Telemetry.Rpm" xml:space="preserve"><value>{0:N0} RPM</value></data>
+  <data name="Telemetry.PwmFault" xml:space="preserve"><value> • PWM OUTPUT FAULT</value></data>
+  <data name="Telemetry.Automatic" xml:space="preserve"><value>Automatic</value></data>
+  <data name="Telemetry.Fixed" xml:space="preserve"><value>Fixed</value></data>
+  <data name="Telemetry.Active" xml:space="preserve"><value>active</value></data>
+  <data name="Telemetry.Inactive" xml:space="preserve"><value>inactive</value></data>
+  <data name="Telemetry.Fault.None" xml:space="preserve"><value>no fault</value></data>
+  <data name="Telemetry.Fault.ShortCircuit" xml:space="preserve"><value>SHORT CIRCUIT</value></data>
+  <data name="Telemetry.Fault.OpenCircuit" xml:space="preserve"><value>OPEN CIRCUIT</value></data>
+  <data name="Telemetry.Fault.OutOfRange" xml:space="preserve"><value>OUT OF RANGE</value></data>
+  <data name="Telemetry.Fault.Unknown" xml:space="preserve"><value>unknown fault ({0})</value></data>
+  <data name="Telemetry.Storage.defaults" xml:space="preserve"><value>factory defaults</value></data>
+  <data name="Telemetry.Storage.loaded" xml:space="preserve"><value>loaded</value></data>
+  <data name="Telemetry.Storage.saved" xml:space="preserve"><value>saved</value></data>
+  <data name="Telemetry.Storage.invalid" xml:space="preserve"><value>INVALID</value></data>
+  <data name="Telemetry.Storage.unavailable" xml:space="preserve"><value>UNAVAILABLE</value></data>
+  <data name="Telemetry.Storage.write_error" xml:space="preserve"><value>WRITE ERROR</value></data>
+  <data name="Telemetry.Storage.verify_error" xml:space="preserve"><value>VERIFICATION ERROR</value></data>
+</root>

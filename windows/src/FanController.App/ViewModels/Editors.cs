@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using System.Globalization;
 using System.Windows.Input;
 using FanController.Core;
+using FanController.App.Localization;
 
 namespace FanController.App.ViewModels;
 
@@ -14,7 +15,7 @@ public sealed class BleDeviceDisplay(BleCandidate candidate) : ObservableObject
     public void Update(BleCandidate candidate)
     {
         if (candidate.Address != Address)
-            throw new ArgumentException("Une annonce ne peut pas changer l’adresse du périphérique.", nameof(candidate));
+            throw new ArgumentException("An advertisement cannot change the device address.", nameof(candidate));
         if (_candidate == candidate) return;
         _candidate = candidate;
         Changed(nameof(Label));
@@ -43,7 +44,7 @@ public sealed class PointEditor : ObservableObject
     {
         if (!double.TryParse(Temperature, NumberStyles.Float, CultureInfo.CurrentCulture, out var t) ||
             !double.TryParse(Duty, NumberStyles.Float, CultureInfo.CurrentCulture, out var d))
-            throw new ArgumentException("Enter numeric temperature and PWM values.");
+            throw new ArgumentException(Localizer.Get("Validation.Numeric", "Enter numeric temperature and PWM values."));
         return new(t, d);
     }
 }
@@ -75,7 +76,8 @@ public sealed class ProfileEditor : ObservableObject
     }
     public bool HasSelectedPoint => SelectedPoint is not null;
     public int Sensor { get; }
-    public string Title => $"Temperature profile {Sensor} • fans {(Sensor == 1 ? "1 and 2" : "3 and 4")}";
+    public string Title => Localizer.Format("Profile.Title", $"Probe profile {Sensor} • fans {(Sensor == 1 ? "1 and 2" : "3 and 4")}",
+        Sensor, Sensor == 1 ? "1 and 2" : "3 and 4");
     public ObservableCollection<PointEditor> Points { get; } = [];
     public AsyncCommand AddCommand { get; }
     public AsyncCommand RemoveCommand { get; }
@@ -86,11 +88,16 @@ public sealed class ProfileEditor : ObservableObject
         {
             try
             {
-                return [new("PWM (%) • linear interpolation", "#5DD9C1",
+                return [new(Localizer.Get("Plot.PwmLabel", "PWM (%) • linear interpolation"), "#5DD9C1",
                     Read().Select(p => new PlotPoint(p.Temperature, p.Duty)).ToArray())];
             }
             catch (ArgumentException) { return []; }
         }
+    }
+    public void RefreshLocalization()
+    {
+        Changed(nameof(Title));
+        Changed(nameof(Curve));
     }
     public ProfileEditor(int sensor, CurvePoint[] points)
     {
@@ -98,7 +105,7 @@ public sealed class ProfileEditor : ObservableObject
         foreach (var p in points) Attach(new(p));
         AddCommand = new(() =>
         {
-            var insertion = FindInsertion() ?? throw new InvalidOperationException("Aucun intervalle disponible pour un nouveau point.");
+            var insertion = FindInsertion() ?? throw new InvalidOperationException(Localizer.Get("Validation.NewPointUnavailable", "No interval is available for a new point."));
             var point = new PointEditor(insertion.Point);
             Attach(point, insertion.Index);
             SelectedPoint = point;
@@ -114,7 +121,7 @@ public sealed class ProfileEditor : ObservableObject
     private void RemovePoint(PointEditor point)
     {
         if (Points.Count <= 2 || !Points.Contains(point))
-            throw new InvalidOperationException("Un profil doit conserver au moins deux points.");
+            throw new InvalidOperationException(Localizer.Get("Validation.MinimumProfilePoints", "A profile must contain at least two points."));
         point.PropertyChanged -= PointChanged;
         Points.Remove(point);
         if (SelectedPoint == point) SelectedPoint = null;
@@ -141,11 +148,11 @@ public sealed class ProfileEditor : ObservableObject
     }
     public void MovePoint(PointEditor point, double temperature, double duty)
     {
-        if (!IsEditing) throw new InvalidOperationException("Chart editing is disabled.");
+        if (!IsEditing) throw new InvalidOperationException(Localizer.Get("Validation.ChartEditingDisabled", "Chart editing is disabled."));
         if (!double.IsFinite(temperature) || !double.IsFinite(duty))
-            throw new ArgumentException("Les coordonnées du point doivent être finies.");
+            throw new ArgumentException(Localizer.Get("Validation.PointCoordinates", "Point coordinates must be finite numbers."));
         var index = Points.IndexOf(point);
-        if (index < 0) throw new ArgumentException("Ce point n’appartient pas au profil.", nameof(point));
+        if (index < 0) throw new ArgumentException(Localizer.Get("Validation.PointNotInProfile", "This point does not belong to the profile."), nameof(point));
         var values = Read();
         var current = values[index];
         var minTemperature = index == 0 ? -20 : Math.Min(current.Temperature, values[index - 1].Temperature + 0.1);
@@ -182,7 +189,7 @@ public sealed class ProfileEditor : ObservableObject
 public sealed class FanEditor : ObservableObject
 {
     public int Fan { get; }
-    public string Title => $"Fan {Fan}";
+    public string Title => Localizer.Format("Fan.Name", $"Fan {Fan}", Fan);
     private int _modeIndex;
     private string _duty;
     public int ModeIndex { get => _modeIndex; set => Set(ref _modeIndex, value); }
@@ -193,12 +200,13 @@ public sealed class FanEditor : ObservableObject
         _modeIndex = setting.Mode == "auto" ? 0 : 1;
         _duty = setting.Duty.ToString(CultureInfo.CurrentCulture);
     }
+    public void RefreshLocalization() => Changed(nameof(Title));
     public FanSetting Read()
     {
         // En auto, le firmware conserve son ancien duty ; le champ n'est pas envoyé.
         var d = 0.0;
         if (ModeIndex == 1 && !double.TryParse(Duty, NumberStyles.Float, CultureInfo.CurrentCulture, out d))
-            throw new ArgumentException("Fixed PWM must be a number from 0 to 100%.");
+            throw new ArgumentException(Localizer.Get("Validation.FixedPwm", "Fixed PWM must be a number from 0 to 100%"));
         var mode = ModeIndex switch { 0 => "auto", 1 => "fixed", _ => "" };
         Validation.Fan(Fan, mode, d);
         return new(mode, d);
@@ -210,6 +218,7 @@ public sealed class SensorDisplay(string title) : ObservableObject
     private string _temperature = "En attente", _details = "Aucune donnée reçue.";
     private string _summary = "Aucune donnée reçue.";
     private bool _advanced;
+    private bool _hasReadings;
     public bool Advanced { get => _advanced; set { if (Set(ref _advanced, value)) Changed(nameof(DisplayDetails)); } }
     public string DisplayDetails => Advanced ? Details : _summary;
     public string Title { get; } = title;
@@ -218,10 +227,20 @@ public sealed class SensorDisplay(string title) : ObservableObject
 
     public void Update(string temperature, string details, string? summary = null)
     {
+        _hasReadings = true;
         var oldDisplay = DisplayDetails;
         Temperature = temperature;
         Details = details;
         _summary = summary ?? details;
+        if (oldDisplay != DisplayDetails) Changed(nameof(DisplayDetails));
+    }
+    public void SetWaiting(string waiting, string noData)
+    {
+        if (_hasReadings) return;
+        var oldDisplay = DisplayDetails;
+        Temperature = waiting;
+        Details = noData;
+        _summary = noData;
         if (oldDisplay != DisplayDetails) Changed(nameof(DisplayDetails));
     }
 }
@@ -231,6 +250,7 @@ public sealed class FanDisplay(string title) : ObservableObject
     private string _rpm = "En attente", _details = "Aucune donnée reçue.";
     private string _summary = "Aucune donnée reçue.";
     private bool _advanced;
+    private bool _hasReadings;
     public bool Advanced { get => _advanced; set { if (Set(ref _advanced, value)) Changed(nameof(DisplayDetails)); } }
     public string DisplayDetails => Advanced ? Details : _summary;
     public string Title { get; } = title;
@@ -239,10 +259,20 @@ public sealed class FanDisplay(string title) : ObservableObject
 
     public void Update(string rpm, string details, string? summary = null)
     {
+        _hasReadings = true;
         var oldDisplay = DisplayDetails;
         Rpm = rpm;
         Details = details;
         _summary = summary ?? details;
+        if (oldDisplay != DisplayDetails) Changed(nameof(DisplayDetails));
+    }
+    public void SetWaiting(string waiting, string noData)
+    {
+        if (_hasReadings) return;
+        var oldDisplay = DisplayDetails;
+        Rpm = waiting;
+        Details = noData;
+        _summary = noData;
         if (oldDisplay != DisplayDetails) Changed(nameof(DisplayDetails));
     }
 }

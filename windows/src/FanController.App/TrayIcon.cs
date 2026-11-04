@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using System.Runtime.InteropServices;
 using Microsoft.UI.Dispatching;
+using FanController.App.Localization;
 
 namespace FanController.App;
 
@@ -16,7 +17,9 @@ internal sealed class TrayIcon : IDisposable
     private readonly DispatcherQueue _dispatcher;
     private readonly SubclassProc _procedure;
     private readonly uint _taskbarCreated = RegisterWindowMessage("TaskbarCreated");
+    private bool _available;
     private bool _disposed;
+    public bool IsAvailable => _available;
 
     public TrayIcon(nint window, DispatcherQueue dispatcher, string iconPath, string disconnectedIconPath, Action open, Action hide, Action quit)
     {
@@ -45,11 +48,14 @@ internal sealed class TrayIcon : IDisposable
         }
         if (!AddIcon())
         {
+            var error = Marshal.GetLastWin32Error();
             RemoveWindowSubclass(window, _procedure, 1);
+            Diagnostics.Record(new Win32Exception(error, "Création de l’icône de notification impossible."));
             DestroyIcon(_icon);
             DestroyIcon(_disconnectedIcon);
-            throw new Win32Exception(Marshal.GetLastWin32Error(), "Création de l’icône de notification impossible.");
+            return;
         }
+        _available = true;
     }
 
     private NotifyIconData Data() => new()
@@ -57,9 +63,8 @@ internal sealed class TrayIcon : IDisposable
         Size = (uint)Marshal.SizeOf<NotifyIconData>(), Window = _window, Id = 1,
         Flags = 1 | 2 | 4, Callback = CallbackMessage,
         Icon = _connected ? _icon : _disconnectedIcon,
-        Tip = _french
-            ? (_connected ? "FanController — connecté — double-clic pour ouvrir" : "FanController — déconnecté — double-clic pour ouvrir")
-            : (_connected ? "FanController — connected — double-click to open" : "FanController — disconnected — double-click to open"),
+        Tip = Localizer.Get(_connected ? "Tray.TooltipConnected" : "Tray.TooltipDisconnected",
+            _connected ? "FanController — connected — double-click to open" : "FanController — disconnected — double-click to open"),
         Info = "", InfoTitle = ""
     };
     private bool AddIcon()
@@ -70,7 +75,7 @@ internal sealed class TrayIcon : IDisposable
 
     public void SetConnected(bool connected)
     {
-        if (_disposed || _connected == connected) return;
+        if (_disposed || !_available || _connected == connected) return;
         _connected = connected;
         var data = Data();
         if (!Shell_NotifyIcon(1, ref data))
@@ -82,7 +87,7 @@ internal sealed class TrayIcon : IDisposable
 
     public void SetFrench(bool french)
     {
-        if (_disposed || _french == french) return;
+        if (_disposed || !_available || _french == french) return;
         _french = french;
         var data = Data();
         Shell_NotifyIcon(1, ref data);
@@ -121,8 +126,8 @@ internal sealed class TrayIcon : IDisposable
         if (menu == 0) throw new Win32Exception(Marshal.GetLastWin32Error(), "Menu de notification indisponible.");
         try
         {
-            AppendMenu(menu, 0, 1, _french ? "Ouvrir FanController" : "Open FanController");
-            AppendMenu(menu, 0, 2, _french ? "Quitter (arrêter l’acquisition)" : "Quit (stop acquisition)");
+            AppendMenu(menu, 0, 1, Localizer.Get("Tray.Open", "Open FanController"));
+            AppendMenu(menu, 0, 2, Localizer.Get("Tray.Quit", "Quit (stop acquisition)"));
             GetCursorPos(out var point);
             SetForegroundWindow(_window);
             var choice = TrackPopupMenu(menu, 0x100 | 0x2, point.X, point.Y, 0, _window, 0);
@@ -136,6 +141,7 @@ internal sealed class TrayIcon : IDisposable
     {
         if (_disposed) return;
         _disposed = true;
+        if (!_available) return;
         var data = Data();
         Shell_NotifyIcon(2, ref data);
         RemoveWindowSubclass(_window, _procedure, 1);

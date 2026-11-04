@@ -1,4 +1,5 @@
 using FanController.Core;
+using FanController.App.Localization;
 using FanController.App.ViewModels;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Automation.Peers;
@@ -70,8 +71,8 @@ public sealed class LineChart : Grid
         var delete = new Button { Content = new FontIcon { Glyph = "\uE74D", FontSize = 16 } };
         delete.SetBinding(Button.CommandProperty, new Binding { Path = new PropertyPath("SelectedPoint.RemoveCommand") });
         delete.SetBinding(Button.IsEnabledProperty, new Binding { Path = new PropertyPath("HasSelectedPoint") });
-        ToolTipService.SetToolTip(delete, "Delete selected point");
-        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(delete, "Delete selected point");
+        ToolTipService.SetToolTip(delete, Localizer.Get("Chart.SelectedPointDelete", "Delete selected point"));
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(delete, Localizer.Get("Chart.SelectedPointDelete", "Delete selected point"));
         _toolbar.Children.Add(add);
         _toolbar.Children.Add(delete);
         Children.Add(_toolbar);
@@ -165,8 +166,8 @@ public sealed class LineChart : Grid
         var points = series.SelectMany(s => s.Points).Where(p => p.Y is { } y && double.IsFinite(y)).ToArray();
         if (points.Length == 0)
         {
-            Label(IsTimeAxis ? "No data for this period." :
-                "Curve unavailable: check values and point order.", 18, 60);
+            Label(IsTimeAxis ? Localizer.Get("History.NoData", "No data for this period.") :
+                Localizer.Get("Chart.Invalid", "Curve unavailable: check values and point order."), 18, 60);
             return;
         }
         var minX = IsEditing && !IsTimeAxis ? -20 : points.Min(p => p.X);

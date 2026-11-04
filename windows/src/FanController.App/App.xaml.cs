@@ -1,6 +1,7 @@
 using Microsoft.UI.Xaml;
 using System.Globalization;
 using Microsoft.Windows.AppLifecycle;
+using System.Runtime.InteropServices;
 
 namespace FanController.App;
 
@@ -16,25 +17,37 @@ public partial class App : Application
     }
     protected override async void OnLaunched(LaunchActivatedEventArgs args)
     {
-        var instance = AppInstance.FindOrRegisterForKey("FanController.Desktop");
-        if (!instance.IsCurrent)
+        try
         {
-            await instance.RedirectActivationToAsync(AppInstance.GetCurrent().GetActivatedEventArgs());
-            Exit();
-            return;
-        }
-        instance.Activated += (_, activation) =>
-        {
-            if (activation.Data is Windows.ApplicationModel.Activation.ILaunchActivatedEventArgs launch &&
-                launch.Arguments.Split(' ', StringSplitOptions.RemoveEmptyEntries).Contains("--startup"))
+            var instance = AppInstance.FindOrRegisterForKey("FanController.Desktop");
+            if (!instance.IsCurrent)
+            {
+                await instance.RedirectActivationToAsync(AppInstance.GetCurrent().GetActivatedEventArgs());
+                Exit();
                 return;
-            _window?.DispatcherQueue.TryEnqueue(() => _window.ShowWindow());
-        };
-        _window = new MainWindow();
-        if (Environment.GetCommandLineArgs().Contains("--startup"))
-            _window.AppWindow.Hide();
-        else
-            _window.Activate();
-        await _window.InitializeAsync();
+            }
+            instance.Activated += (_, activation) =>
+            {
+                if (activation.Data is Windows.ApplicationModel.Activation.ILaunchActivatedEventArgs launch &&
+                    launch.Arguments.Split(' ', StringSplitOptions.RemoveEmptyEntries).Contains("--startup"))
+                    return;
+                _window?.DispatcherQueue.TryEnqueue(() => _window.ShowWindow());
+            };
+            _window = new MainWindow();
+            if (Environment.GetCommandLineArgs().Contains("--startup"))
+                _window.AppWindow.Hide();
+            else
+                _window.Activate();
+            await _window.InitializeAsync();
+        }
+        catch (Exception ex)
+        {
+            Diagnostics.Record(ex);
+            MessageBoxW(IntPtr.Zero, ex.ToString(), "FanController startup error", 0x10);
+            Exit();
+        }
     }
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    private static extern int MessageBoxW(IntPtr window, string text, string caption, uint type);
 }
