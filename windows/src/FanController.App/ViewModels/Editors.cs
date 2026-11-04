@@ -43,7 +43,7 @@ public sealed class PointEditor : ObservableObject
     {
         if (!double.TryParse(Temperature, NumberStyles.Float, CultureInfo.CurrentCulture, out var t) ||
             !double.TryParse(Duty, NumberStyles.Float, CultureInfo.CurrentCulture, out var d))
-            throw new ArgumentException("Saisissez des valeurs numériques (virgule décimale) pour température et PWM.");
+            throw new ArgumentException("Enter numeric temperature and PWM values.");
         return new(t, d);
     }
 }
@@ -75,7 +75,7 @@ public sealed class ProfileEditor : ObservableObject
     }
     public bool HasSelectedPoint => SelectedPoint is not null;
     public int Sensor { get; }
-    public string Title => $"Profil de la sonde {Sensor} • ventilateurs {(Sensor == 1 ? "1 et 2" : "3 et 4")}";
+    public string Title => $"Temperature profile {Sensor} • fans {(Sensor == 1 ? "1 and 2" : "3 and 4")}";
     public ObservableCollection<PointEditor> Points { get; } = [];
     public AsyncCommand AddCommand { get; }
     public AsyncCommand RemoveCommand { get; }
@@ -86,7 +86,7 @@ public sealed class ProfileEditor : ObservableObject
         {
             try
             {
-                return [new("PWM (%) • interpolation linéaire", "#5DD9C1",
+                return [new("PWM (%) • linear interpolation", "#5DD9C1",
                     Read().Select(p => new PlotPoint(p.Temperature, p.Duty)).ToArray())];
             }
             catch (ArgumentException) { return []; }
@@ -141,7 +141,7 @@ public sealed class ProfileEditor : ObservableObject
     }
     public void MovePoint(PointEditor point, double temperature, double duty)
     {
-        if (!IsEditing) throw new InvalidOperationException("L’édition du graphique est désactivée.");
+        if (!IsEditing) throw new InvalidOperationException("Chart editing is disabled.");
         if (!double.IsFinite(temperature) || !double.IsFinite(duty))
             throw new ArgumentException("Les coordonnées du point doivent être finies.");
         var index = Points.IndexOf(point);
@@ -182,7 +182,7 @@ public sealed class ProfileEditor : ObservableObject
 public sealed class FanEditor : ObservableObject
 {
     public int Fan { get; }
-    public string Title => $"Ventilateur {Fan}";
+    public string Title => $"Fan {Fan}";
     private int _modeIndex;
     private string _duty;
     public int ModeIndex { get => _modeIndex; set => Set(ref _modeIndex, value); }
@@ -198,7 +198,7 @@ public sealed class FanEditor : ObservableObject
         // En auto, le firmware conserve son ancien duty ; le champ n'est pas envoyé.
         var d = 0.0;
         if (ModeIndex == 1 && !double.TryParse(Duty, NumberStyles.Float, CultureInfo.CurrentCulture, out d))
-            throw new ArgumentException("Le PWM fixe doit être un nombre de 0 à 100 %.");
+            throw new ArgumentException("Fixed PWM must be a number from 0 to 100%.");
         var mode = ModeIndex switch { 0 => "auto", 1 => "fixed", _ => "" };
         Validation.Fan(Fan, mode, d);
         return new(mode, d);
@@ -207,8 +207,8 @@ public sealed class FanEditor : ObservableObject
 
 public sealed class SensorDisplay(string title) : ObservableObject
 {
-    private string _temperature = "En attente", _details = "Aucune mesure reçue.";
-    private string _summary = "Aucune mesure reçue.";
+    private string _temperature = "En attente", _details = "Aucune donnée reçue.";
+    private string _summary = "Aucune donnée reçue.";
     private bool _advanced;
     public bool Advanced { get => _advanced; set { if (Set(ref _advanced, value)) Changed(nameof(DisplayDetails)); } }
     public string DisplayDetails => Advanced ? Details : _summary;
@@ -228,8 +228,8 @@ public sealed class SensorDisplay(string title) : ObservableObject
 
 public sealed class FanDisplay(string title) : ObservableObject
 {
-    private string _rpm = "En attente", _details = "Aucune mesure reçue.";
-    private string _summary = "Aucune mesure reçue.";
+    private string _rpm = "En attente", _details = "Aucune donnée reçue.";
+    private string _summary = "Aucune donnée reçue.";
     private bool _advanced;
     public bool Advanced { get => _advanced; set { if (Set(ref _advanced, value)) Changed(nameof(DisplayDetails)); } }
     public string DisplayDetails => Advanced ? Details : _summary;

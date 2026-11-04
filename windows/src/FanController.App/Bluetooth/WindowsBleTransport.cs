@@ -31,23 +31,23 @@ public sealed class WindowsBleTransport : IBleTransport
 
     public async Task ConnectAsync(ulong address, CancellationToken cancellationToken, bool allowPairing)
     {
-        var stage = "Ouverture de l’appareil BLE";
+        var stage = "Opening BLE device";
         try
         {
             var device = await BluetoothLEDevice.FromBluetoothAddressAsync(address).AsTask(cancellationToken)
-                ?? throw new IOException("Appareil BLE introuvable. Relancez une recherche.");
+                ?? throw new IOException("BLE device not found. Run a new scan.");
             DeviceName = device.Name;
             lock (_sync)
             {
-                if (_closed) { device.Dispose(); throw new IOException("Connexion annulée."); }
+                if (_closed) { device.Dispose(); throw new IOException("Connection was cancelled."); }
                 _device = device;
                 device.ConnectionStatusChanged += StatusChanged;
             }
-            stage = "Appairage Windows (maintenir BOOT 2 secondes puis relâcher pour un nouveau PC)";
+            stage = "Windows pairing (hold BOOT for 2 seconds, then release, for a new PC)";
             if (!device.DeviceInformation.Pairing.IsPaired)
             {
                 if (!allowPairing)
-                    throw new IOException("Le contrôleur mémorisé n’est plus appairé. Reconnectez-le manuellement avec BOOT.");
+                    throw new IOException("The remembered controller is no longer paired. Pair it manually with BOOT.");
                 var pairing = device.DeviceInformation.Pairing.Custom;
                 void Confirm(DeviceInformationCustomPairing _, DevicePairingRequestedEventArgs args)
                 {
@@ -60,39 +60,39 @@ public sealed class WindowsBleTransport : IBleTransport
                     var result = await pairing.PairAsync(DevicePairingKinds.ConfirmOnly,
                         DevicePairingProtectionLevel.Encryption).AsTask(cancellationToken);
                     if (result.Status is not (DevicePairingResultStatus.Paired or DevicePairingResultStatus.AlreadyPaired))
-                        throw new IOException($"Appairage refusé : {result.Status}. Ouvrez la fenêtre BOOT sur l’ESP32.");
+                        throw new IOException($"Pairing was rejected: {result.Status}. Open the ESP32 BOOT pairing window.");
                     // The live GATT protection requirements below enforce encryption;
                     // ProtectionLevelUsed can under-report it even for a successful pairing.
                 }
                 finally { pairing.PairingRequested -= Confirm; }
             }
-            stage = "Découverte des services GATT";
+            stage = "Discovering GATT services";
             // La découverte filtrée par UUID peut échouer avec ERROR_BAD_COMMAND sur Windows.
             var services = await device.GetGattServicesAsync(BluetoothCacheMode.Uncached).AsTask(cancellationToken);
-            Check(services.Status, "Découverte du service UART");
+            Check(services.Status, "Discovering UART service");
             var uart = services.Services.FirstOrDefault(service => service.Uuid == AdvertisementIndex.ServiceId);
             foreach (var service in services.Services)
                 if (service != uart) service.Dispose();
-            if (uart is null) throw new IOException("Service UART absent. Vérifiez le firmware de l’ESP32.");
+            if (uart is null) throw new IOException("UART service is missing. Check the ESP32 firmware.");
             lock (_sync)
             {
                 if (_closed)
                 {
                     uart.Dispose();
-                    throw new IOException("Connexion annulée.");
+                    throw new IOException("Connection was cancelled.");
                 }
                 _service = uart;
             }
-            stage = "Découverte des caractéristiques RX/TX";
+            stage = "Discovering RX/TX characteristics";
             var chars = await _service.GetCharacteristicsAsync(BluetoothCacheMode.Uncached).AsTask(cancellationToken);
-            Check(chars.Status, "Découverte des caractéristiques");
+            Check(chars.Status, "Discovering characteristics");
             var rx = chars.Characteristics.SingleOrDefault(c => c.Uuid == RxId)
-                ?? throw new IOException("Caractéristique RX absente.");
+                ?? throw new IOException("RX characteristic is missing.");
             var tx = chars.Characteristics.SingleOrDefault(c => c.Uuid == TxId)
-                ?? throw new IOException("Caractéristique TX absente.");
+                ?? throw new IOException("TX characteristic is missing.");
             if (!rx.CharacteristicProperties.HasFlag(GattCharacteristicProperties.Write) ||
                 !tx.CharacteristicProperties.HasFlag(GattCharacteristicProperties.Notify))
-                throw new IOException("Propriétés WriteWithResponse/Notify absentes.");
+                throw new IOException("WriteWithResponse/Notify properties are missing.");
             rx.ProtectionLevel = GattProtectionLevel.EncryptionRequired;
             tx.ProtectionLevel = GattProtectionLevel.EncryptionRequired;
             lock (_sync)
@@ -103,14 +103,14 @@ public sealed class WindowsBleTransport : IBleTransport
                 tx.ValueChanged += ValueChanged;
             }
             // Impérativement avant la première écriture RX.
-            stage = "Abonnement aux notifications TX";
+            stage = "Subscribing to TX notifications";
             var subscription = await tx.WriteClientCharacteristicConfigurationDescriptorWithResultAsync(
                 GattClientCharacteristicConfigurationDescriptorValue.Notify).AsTask(cancellationToken);
             Check(subscription.Status, "Abonnement aux notifications TX", subscription.ProtocolError);
             lock (_sync)
             {
                 if (_closed || device.ConnectionStatus != BluetoothConnectionStatus.Connected)
-                    throw new IOException("Connexion BLE interrompue.");
+                throw new IOException("BLE connection was interrupted.");
                 _ready = true;
             }
         }
@@ -118,10 +118,10 @@ public sealed class WindowsBleTransport : IBleTransport
         {
             Disconnect();
             var advice = ex.HResult == unchecked((int)0x80070016)
-                ? " Windows a refusé la découverte GATT (ERROR_BAD_COMMAND). Fermez les autres clients BLE, " +
-                  "redémarrez l’ESP32 et, s’il est enregistré, supprimez l’appareil des paramètres Bluetooth avant de réessayer."
-                : " Vérifiez la radio Bluetooth, la portée et les autorisations Windows.";
-            throw new IOException($"{stage} : erreur Windows 0x{ex.HResult:X8}.{advice}", ex);
+                ? " Windows rejected GATT discovery (ERROR_BAD_COMMAND). Close other BLE clients, restart the ESP32, " +
+                  "and remove the device from Windows Bluetooth settings before retrying if it is already paired."
+                : " Check Bluetooth radio, range, and Windows permissions.";
+            throw new IOException($"{stage}: Windows error 0x{ex.HResult:X8}.{advice}", ex);
         }
         catch { Disconnect(); throw; }
     }
@@ -131,7 +131,7 @@ public sealed class WindowsBleTransport : IBleTransport
         GattCharacteristic rx;
         lock (_sync)
         {
-            if (_closed || !_ready || _rx is null) throw new IOException("BLE non connecté ou TX non abonné.");
+            if (_closed || !_ready || _rx is null) throw new IOException("BLE is not connected or TX notifications are not subscribed.");
             rx = _rx;
         }
         if (bytes.Length is < 1 or > 20) throw new ArgumentOutOfRangeException(nameof(bytes));
@@ -165,18 +165,18 @@ public sealed class WindowsBleTransport : IBleTransport
         if (status != GattCommunicationStatus.Success)
         {
             var detail = protocolError is { } code ? $" (ATT 0x{code:X2} : {AttError(code)})" : "";
-            throw new IOException($"{action} : {status}{detail}. Vérifiez la liaison et les clés d’appairage des deux côtés.");
+            throw new IOException($"{action}: {status}{detail}. Check the connection and pairing keys on both devices.");
         }
     }
     private static string AttError(byte code) => code switch
     {
-        0x01 => "handle invalide ; services GATT potentiellement périmés",
-        0x03 => "écriture non autorisée",
-        0x05 => "authentification insuffisante",
-        0x08 => "autorisation insuffisante",
-        0x0C => "taille de clé de chiffrement insuffisante",
-        0x0F => "liaison non chiffrée",
-        _ => "erreur du serveur GATT"
+        0x01 => "invalid handle; GATT services may be stale",
+        0x03 => "write not permitted",
+        0x05 => "insufficient authentication",
+        0x08 => "insufficient authorization",
+        0x0C => "encryption key size is insufficient",
+        0x0F => "link is not encrypted",
+        _ => "GATT server error"
     };
     public void Disconnect()
     {

@@ -9,8 +9,8 @@ public partial class App : Application
     private MainWindow? _window;
     public App()
     {
-        CultureInfo.DefaultThreadCurrentCulture = CultureInfo.GetCultureInfo("fr-FR");
-        CultureInfo.DefaultThreadCurrentUICulture = CultureInfo.GetCultureInfo("fr-FR");
+        CultureInfo.DefaultThreadCurrentCulture = CultureInfo.GetCultureInfo("en-US");
+        CultureInfo.DefaultThreadCurrentUICulture = CultureInfo.GetCultureInfo("en-US");
         UnhandledException += (_, e) => Diagnostics.Record(new Exception(e.Message, e.Exception));
         InitializeComponent();
     }

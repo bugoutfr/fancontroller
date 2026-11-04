@@ -27,7 +27,7 @@ public sealed class BleScanner : IDisposable
     private void Stopped(BluetoothLEAdvertisementWatcher sender, BluetoothLEAdvertisementWatcherStoppedEventArgs args)
     {
         if (args.Error != Windows.Devices.Bluetooth.BluetoothError.Success)
-            Failed?.Invoke($"Recherche BLE arrêtée : {args.Error}. Vérifiez la radio et les autorisations Windows.");
+            Failed?.Invoke($"BLE scan stopped: {args.Error}. Check Bluetooth radio and Windows permissions.");
     }
     public void Dispose()
     {

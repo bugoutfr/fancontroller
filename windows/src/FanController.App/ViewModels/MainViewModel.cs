@@ -30,7 +30,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Security.SecurityException)
             {
                 Diagnostics.Record(ex);
-                Error = $"Démarrage Windows : {ex.Message}";
+                Error = $"Windows startup: {ex.Message}";
                 Changed(nameof(LaunchAtStartup));
             }
         }
@@ -43,8 +43,8 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         ? Microsoft.UI.Xaml.Visibility.Visible : Microsoft.UI.Xaml.Visibility.Collapsed;
     public Microsoft.UI.Xaml.Visibility DisconnectVisibility => DisconnectCommand.CanExecute(null)
         ? Microsoft.UI.Xaml.Visibility.Visible : Microsoft.UI.Xaml.Visibility.Collapsed;
-    public string DisconnectLabel => Connected ? "Déconnecter" : "Suspendre la reconnexion";
-    public string ConnectionHeading => Connected ? "Connecté" : _connecting ? "Connexion en cours…" : "Déconnecté";
+    public string DisconnectLabel => Connected ? "Disconnect" : "Pause reconnection";
+    public string ConnectionHeading => Connected ? "Connected" : _connecting ? "Connecting…" : "Disconnected";
     private void SetConnecting(bool value)
     {
         _connecting = value;
@@ -63,27 +63,27 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     private bool _busy, _scanning, _connected, _localDirty;
     private bool _remoteDirty;
     private string _remoteStorage = "";
-    public string SettingsSummary => !Connected ? "Configuration non actualisée : connectez le contrôleur." :
+    public string SettingsSummary => !Connected ? "Configuration not refreshed: connect the controller." :
         _remoteStorage is "invalid" or "unavailable" or "write_error" or "verify_error"
-            ? $"Problème d’enregistrement sur l’ESP32 : {TranslateStorage(_remoteStorage)}." :
-        _localDirty ? "Modifications à appliquer." :
-        _remoteDirty ? "Réglages appliqués. Enregistrez-les pour les conserver après redémarrage." :
-        "Configuration chargée depuis l’ESP32.";
-    private string _message = "Recherchez un contrôleur pour vous connecter.";
-    private string _error = "", _validation = "", _storage = "État distant inconnu.";
+            ? $"ESP32 save problem: {TranslateStorage(_remoteStorage)}." :
+        _localDirty ? "Changes need to be applied." :
+        _remoteDirty ? "Settings applied. Save them to keep them after restart." :
+        "Configuration loaded from the ESP32.";
+    private string _message = "Search for a controller to connect.";
+    private string _error = "", _validation = "", _storage = "Remote state unknown.";
     private BleDeviceDisplay? _selectedDevice;
     private ulong _connectedAddress;
-    private string _controllerName = "Aucun contrôleur connecté";
+    private string _controllerName = "No controller connected";
     public string ControllerName { get => _controllerName; private set => Set(ref _controllerName, value); }
-    public string ControllerIdentifier => _connectedAddress == 0 ? "Adresse BLE : —" :
-        $"Adresse BLE : {string.Join(":", _connectedAddress.ToString("X12").Chunk(2).Select(chars => new string(chars)))}";
+    public string ControllerIdentifier => _connectedAddress == 0 ? "Bluetooth address: —" :
+        $"Bluetooth address: {string.Join(":", _connectedAddress.ToString("X12").Chunk(2).Select(chars => new string(chars)))}";
     private int? _bleRssiDbm;
     private bool _rssiSupported;
-    public string LinkQuality => !Connected ? "Liaison inactive • qualité non disponible" :
+    public string LinkQuality => !Connected ? "Link inactive • quality unavailable" :
         _bleRssiDbm is { } rssi
-            ? $"Signal reçu par l’ESP32 : {rssi} dBm"
-            : _rssiSupported ? "Signal radio momentanément indisponible" :
-                "Signal radio indisponible • firmware 1.1.3 ou ultérieur requis";
+            ? $"Signal received by ESP32: {rssi} dBm"
+            : _rssiSupported ? "Radio signal temporarily unavailable" :
+                "Radio signal unavailable • firmware 1.1.3 or later required";
     private string _configurationMessage = "";
     public string ConfigurationMessage { get => _configurationMessage; private set => Set(ref _configurationMessage, value); }
     private string _historySession = Guid.NewGuid().ToString("N");
@@ -100,7 +100,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     }
     public Microsoft.UI.Xaml.Visibility CurveEditorVisibility => CurveEditing
         ? Microsoft.UI.Xaml.Visibility.Visible : Microsoft.UI.Xaml.Visibility.Collapsed;
-    private string _firmware = "Firmware : non connecté";
+    private string _firmware = "Firmware: disconnected";
     public string Firmware { get => _firmware; private set => Set(ref _firmware, value); }
     public HistoryViewModel History { get; }
     public ObservableCollection<BleDeviceDisplay> Devices { get; } = [];
@@ -116,15 +116,17 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     public bool Busy { get => _busy; private set { Set(ref _busy, value); Changed(nameof(CanEdit)); RefreshCommands(); } }
     public bool Connected { get => _connected; private set { Set(ref _connected, value); Changed(nameof(ConnectionLabel)); Changed(nameof(LinkQuality)); Changed(nameof(CanEdit)); Changed(nameof(SettingsSummary)); RefreshCommands(); } }
     public bool CanEdit => Connected && !Busy;
-    public string ConnectionLabel => Connected ? "Connecté • BLE local" : "Déconnecté • mesures non actuelles";
+    public string ConnectionLabel => Connected ? "Connected • local BLE" : "Disconnected • readings are stale";
     public string Message { get => _message; private set => Set(ref _message, value); }
-    public string Error { get => _error; private set { Set(ref _error, value); Changed(nameof(HasError)); } }
+    public string Error { get => _error; private set { Set(ref _error, value); Changed(nameof(HasError)); Changed(nameof(ErrorVisibility)); } }
     public bool HasError => !string.IsNullOrEmpty(Error);
+    public Microsoft.UI.Xaml.Visibility ErrorVisibility => HasError
+        ? Microsoft.UI.Xaml.Visibility.Visible : Microsoft.UI.Xaml.Visibility.Collapsed;
     public string ValidationMessage { get => _validation; private set => Set(ref _validation, value); }
     public string Storage { get => _storage; private set => Set(ref _storage, value); }
-    public string LocalState => Profiles.Count == 0 ? "Aucune configuration lue." :
-        _localDirty ? "Modifications locales NON appliquées" : "Brouillon identique à la dernière configuration lue";
-    public string LastUpdate { get; private set; } = "Aucune mesure reçue";
+    public string LocalState => Profiles.Count == 0 ? "No configuration has been read." :
+        _localDirty ? "Local changes NOT applied" : "Draft matches the last configuration read";
+    public string LastUpdate { get; private set; } = "No readings received";
     public AsyncCommand ScanCommand { get; }
     public AsyncCommand ConnectCommand { get; }
     public AsyncCommand DisconnectCommand { get; }
@@ -141,9 +143,9 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         _dispatcher = dispatcher;
         History = new(dispatcher);
         for (var sensor = 1; sensor <= 2; sensor++)
-            Sensors.Add(new($"Sonde {sensor}"));
+            Sensors.Add(new($"Temperature {sensor}"));
         for (var fan = 1; fan <= 4; fan++)
-            FanReadings.Add(new($"Ventilateur {fan} • sonde {(fan - 1) / 2 + 1}"));
+            FanReadings.Add(new($"Fan {fan} • Temperature {(fan - 1) / 2 + 1}"));
         ScanCommand = Command(ScanAsync, () => !Busy && !Connected && !_scanning);
         ConnectCommand = Command(ConnectAsync, () => !Busy && !Connected && SelectedDevice is not null);
         DisconnectCommand = Command(() => { Disconnect(); return Task.CompletedTask; },
@@ -151,37 +153,49 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         ReadCommand = Command(() => Operation(async () =>
         {
             await AcceptRemoteAsync(await _controller!.SynchronizeAsync(_connectionCts!.Token), replaceDraft: false);
-            ConfigurationMessage = "Configuration relue ; brouillon conservé. Aucun changement réappliqué.";
+            ConfigurationMessage = "Configuration reread; draft retained. No changes were reapplied.";
         }), Ready);
         AdoptCommand = Command(() =>
         {
             ReplaceDraft(_remote!.Configuration);
-            ConfigurationMessage = "Modifications annulées, sans écriture sur l’ESP32.";
+            ConfigurationMessage = "Changes discarded without writing to the ESP32.";
             return Task.CompletedTask;
         }, () => !Busy && _remote is not null && _localDirty);
         ApplyCommand = Command(() => Operation(async () =>
         {
             var draft = ReadDraft();
             await AcceptRemoteAsync(await _controller!.ApplyAsync(draft, _connectionCts!.Token), replaceDraft: true);
-            ConfigurationMessage = "Configuration appliquée en RAM. Cliquez sur Enregistrer sur l’ESP32 pour la conserver après redémarrage.";
+            ConfigurationMessage = "Configuration applied to RAM. Save to the ESP32 to keep it after restart.";
         }), () => Ready() && _localDirty && string.IsNullOrEmpty(ValidationMessage));
         SaveCommand = Command(() => Operation(async () =>
         {
             await AcceptRemoteAsync(await _controller!.SaveAsync(_connectionCts!.Token), replaceDraft: false);
-            ConfigurationMessage = "Configuration enregistrée sur l’ESP32 et relue.";
+            ConfigurationMessage = "Configuration saved to and reread from the ESP32.";
         }), () => Ready() && !_localDirty);
         DefaultsCommand = Command(() => Operation(async () =>
         {
             await AcceptRemoteAsync(await _controller!.DefaultsAsync(_connectionCts!.Token), replaceDraft: true);
-            ConfigurationMessage = "Valeurs d’usine appliquées en RAM. Enregistrement sur l’ESP32 séparé.";
+            ConfigurationMessage = "Factory defaults applied to RAM. Saving to the ESP32 is a separate step.";
         }), Ready);
     }
 
     private AsyncCommand Command(Func<Task> action, Func<bool> enabled) => new(action, enabled, ex =>
     {
         Diagnostics.Record(ex);
-        Error = ex.Message;
+        Error = ErrorDetails(ex);
     });
+    private static string ErrorDetails(Exception exception)
+    {
+        var details = new List<string>();
+        for (var current = exception; current is not null; current = current.InnerException)
+        {
+            var message = current.Message;
+            details.Add(string.IsNullOrWhiteSpace(message)
+                ? current.GetType().Name
+                : $"{current.GetType().Name}: {message}");
+        }
+        return string.Join(Environment.NewLine, details.Distinct(StringComparer.Ordinal));
+    }
     private bool Ready() => Connected && !Busy;
     private void RefreshCommands()
     {
@@ -199,7 +213,6 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     private async Task Operation(Func<Task> action)
     {
         Busy = true;
-        Error = "";
         try { await action(); }
         finally { Busy = false; }
     }
@@ -210,8 +223,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         RefreshCommands();
         Devices.Clear();
         SelectedDevice = null;
-        Error = "";
-        Message = "Recherche de contrôleurs…";
+        Message = "Searching for controllers…";
         var scanner = new BleScanner();
         _scanner = scanner;
         _scanCts = new();
@@ -227,7 +239,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         {
             scanner.Start();
             await Task.Delay(TimeSpan.FromSeconds(15), _scanCts.Token);
-            Message = Devices.Count == 0 ? "Aucun contrôleur trouvé. Vérifiez alimentation, radio et portée." : "Recherche terminée.";
+            Message = Devices.Count == 0 ? "No controller found. Check power, Bluetooth, and range." : "Search complete.";
         }
         catch (OperationCanceledException) { }
         finally
@@ -252,7 +264,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             _scanner = null;
             CloseSession();
             _connectedAddress = address;
-            ControllerName = "Nom du contrôleur en cours de lecture…";
+            ControllerName = "Reading controller name…";
             Changed(nameof(ControllerIdentifier));
             _historySession = Guid.NewGuid().ToString("N");
             History.SelectDevice(address);
@@ -268,23 +280,24 @@ public sealed class MainViewModel : ObservableObject, IDisposable
                 lifetime.Cancel();
                 Connected = false;
                 ShowConnection(true);
-                Storage = "État distant incertain ; reconnexion et relecture obligatoires.";
-                Error = ex.Message;
-                Message = "Liaison interrompue.";
-                ConfigurationMessage = "Brouillon conservé. Une opération interrompue peut avoir été partiellement appliquée ; vérifiez la configuration après reconnexion.";
+                Storage = "Remote state is uncertain; reconnect and reread it.";
+                Error = ErrorDetails(ex);
+                Message = "Link interrupted.";
+                ConfigurationMessage = "Draft retained. An interrupted operation may have been partly applied; check the configuration after reconnecting.";
             });
             SetConnecting(true);
             try
             {
-                Message = automatic ? "Reconnexion au dernier contrôleur…" : "Connexion au contrôleur…";
+                Message = automatic ? "Reconnecting to the last controller…" : "Connecting to controller…";
                 await transport.ConnectAsync(address, lifetime.Token, allowPairing: !automatic);
-                ControllerName = string.IsNullOrWhiteSpace(transport.DeviceName) ? "Nom du contrôleur indisponible" : transport.DeviceName;
+                ControllerName = string.IsNullOrWhiteSpace(transport.DeviceName) ? "Controller name unavailable" : transport.DeviceName;
                 // Le délai de découverte ne doit pas raccourcir les 20 s de chaque requête.
                 lifetime.CancelAfter(Timeout.InfiniteTimeSpan);
                 _controller = new(session);
-                Message = "Lecture des réglages…";
+                Message = "Reading settings…";
                 var state = await _controller.SynchronizeAsync(lifetime.Token);
                 await AcceptRemoteAsync(state, replaceDraft: Profiles.Count == 0);
+                Error = "";
                 Connected = true;
                 ShowConnection(false);
                 _lastDevice = address;
@@ -293,16 +306,16 @@ public sealed class MainViewModel : ObservableObject, IDisposable
                 catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
                 {
                     Diagnostics.Record(ex);
-                    Error = $"Connexion établie, mais mémorisation impossible : {ex.Message}";
+                    Error = $"Connected, but could not remember the controller: {ex.Message}";
                 }
-                Message = "Liaison Bluetooth chiffrée.";
+                Message = "Encrypted Bluetooth link established.";
                 _ = PollAsync(_controller, session, lifetime.Token);
             }
             catch
             {
                 Message = _reconnect.Paused
-                    ? "Reconnexion automatique suspendue. Choisissez un contrôleur pour reprendre."
-                    : "Contrôleur inaccessible. Vérifiez son alimentation et sa portée.";
+                    ? "Automatic reconnection paused. Choose a controller to resume."
+                    : "Controller unavailable. Check its power and range.";
                 CloseSession();
                 ShowConnection(true);
                 throw;
@@ -319,13 +332,13 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Security.SecurityException)
         {
             Diagnostics.Record(ex);
-            Error = $"Lecture du démarrage Windows impossible : {ex.Message}";
+            Error = $"Could not read Windows startup setting: {ex.Message}";
         }
         try { _lastDevice = _preferences.Load(); }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             Diagnostics.Record(ex);
-            Error = $"Préférence de connexion illisible : {ex.Message}";
+            Error = $"Could not read connection preference: {ex.Message}";
         }
         _ = ReconnectLoopAsync();
         await History.InitializeAsync();
@@ -340,11 +353,11 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             {
                 Diagnostics.Record(ex);
                 if (_disposed) return;
-                Error = ex.Message;
+                Error = ErrorDetails(ex);
                 ShowConnection(true);
                 Message = _reconnect.Paused
-                    ? "Reconnexion automatique suspendue. Choisissez un contrôleur pour reprendre."
-                    : $"Reconnexion automatique • nouvelle tentative après {_reconnect.Delay.TotalSeconds:0} s.";
+                    ? "Automatic reconnection paused. Choose a controller to resume."
+                    : $"Automatic reconnection • retrying in {_reconnect.Delay.TotalSeconds:0} s.";
             });
         await loop.RunAsync(_applicationLifetime.Token);
     }
@@ -353,7 +366,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     {
         Busy = true;
         SetConnecting(true);
-        Message = "Reconnexion au dernier contrôleur…";
+        Message = "Reconnecting to the last controller…";
         try
         {
             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
@@ -363,7 +376,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             if (!paired)
             {
                 ShowConnection(true);
-                Message = "Le dernier contrôleur n’est plus appairé dans Windows. Connexion manuelle requise.";
+                Message = "The last controller is no longer paired in Windows. Manual connection required.";
                 return false;
             }
             await ConnectAddressAsync(address, automatic: true);
@@ -393,7 +406,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         catch (Exception ex)
         {
             Diagnostics.Record(ex);
-            Dispatch(() => { if (_session == session) Error = ex.Message; });
+            Dispatch(() => { if (_session == session) Error = ErrorDetails(ex); });
         }
     }
     private async Task AcceptRemoteAsync((RemoteConfiguration Config, Telemetry Status) state, bool replaceDraft)
@@ -455,33 +468,41 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         _remoteStorage = status.Storage;
         Changed(nameof(SettingsSummary));
         Firmware = status.FirmwareVersion is { Length: > 0 } version
-            ? $"Firmware {version}" : "Firmware ancien • version non publiée";
-        Storage = $"RAM distante : {(status.Dirty ? "NON enregistrée" : "enregistrée / inchangée")} • " +
-                  $"NVS : {TranslateStorage(status.Storage)} • disponible : {(status.StorageAvailable ? "oui" : "non")}";
-        LastUpdate = $"Dernière mesure : {DateTime.Now:HH:mm:ss} • fonctionnement : {TimeSpan.FromMilliseconds(status.UptimeMs):g}";
+            ? $"Firmware {version}" : "Legacy firmware • version not published";
+        Storage = $"Remote RAM: {(status.Dirty ? "NOT saved" : "saved / unchanged")} • " +
+                  $"NVS: {TranslateStorage(status.Storage)} • available: {(status.StorageAvailable ? "yes" : "no")}";
+        LastUpdate = $"Last reading: {DateTime.Now:HH:mm:ss} • uptime: {TimeSpan.FromMilliseconds(status.UptimeMs):g}";
         Changed(nameof(LastUpdate));
         foreach (var sensor in status.Sensors.OrderBy(s => s.Sensor))
-            Sensors[sensor.Sensor - 1].Update(sensor.Temperature is { } t ? $"{t:F1} °C" : "Indisponible",
-                $"{sensor.Millivolts:F1} mV • {TranslateFault(sensor.Fault)} • sécurité : {(sensor.Safety ? "ACTIVE" : "inactive")}",
-                $"{TranslateFault(sensor.Fault)} • sécurité : {(sensor.Safety ? "ACTIVE" : "inactive")}");
+            Sensors[sensor.Sensor - 1].Update(sensor.Temperature is { } t ? $"{t:F1} °C" : "Unavailable",
+                $"{sensor.Millivolts:F1} mV • {TranslateFault(sensor.Fault)} • safety: {(sensor.Safety ? "ACTIVE" : "inactive")}",
+                $"{TranslateFault(sensor.Fault)} • safety: {(sensor.Safety ? "ACTIVE" : "inactive")}");
         foreach (var fan in status.Fans.OrderBy(f => f.Fan))
-            FanReadings[fan.Fan - 1].Update($"{fan.Rpm:N0} tr/min",
-                $"{(fan.Mode == "auto" ? "Automatique" : "Fixe")} • fixe {fan.FixedDuty:F1} % • cible {fan.TargetDuty:F1} % • PWM {fan.AppliedDuty:F1} %\n" +
-                $"Sortie PWM : {(fan.PwmOk ? "OK" : "DÉFAUT")} • boost : {(fan.Boost ? "actif" : "inactif")}",
-                $"{(fan.Mode == "auto" ? "Automatique" : "Fixe")} • PWM {fan.AppliedDuty:F1} %" +
-                (fan.PwmOk ? "" : " • DÉFAUT SORTIE PWM"));
+            FanReadings[fan.Fan - 1].Update($"{fan.Rpm:N0} RPM",
+                $"{(fan.Mode == "auto" ? "Automatic" : "Fixed")} • fixed {fan.FixedDuty:F1} % • target {fan.TargetDuty:F1} % • PWM {fan.AppliedDuty:F1} %\n" +
+                $"PWM output: {(fan.PwmOk ? "OK" : "FAULT")} • boost: {(fan.Boost ? "active" : "inactive")}",
+                $"{(fan.Mode == "auto" ? "Automatic" : "Fixed")} • PWM {fan.AppliedDuty:F1} %" +
+                (fan.PwmOk ? "" : " • PWM OUTPUT FAULT"));
     }
 
     private static string TranslateFault(string value) => value switch
     {
-        "none" => "aucun défaut", "short_circuit" => "COURT-CIRCUIT", "open_circuit" => "CIRCUIT OUVERT",
-        "out_of_range" => "HORS PLAGE", _ => $"défaut inconnu ({value})"
+        "none" => "no fault",
+        "short_circuit" => "SHORT CIRCUIT",
+        "open_circuit" => "OPEN CIRCUIT",
+        "out_of_range" => "OUT OF RANGE",
+        _ => $"unknown fault ({value})"
     };
     private static string TranslateStorage(string value) => value switch
     {
-        "defaults" => "valeurs d'usine", "loaded" => "chargée", "saved" => "enregistrée",
-        "invalid" => "INVALIDE", "unavailable" => "INDISPONIBLE", "write_error" => "ERREUR D'ÉCRITURE",
-        "verify_error" => "ERREUR DE VÉRIFICATION", _ => value
+        "defaults" => "factory defaults",
+        "loaded" => "loaded",
+        "saved" => "saved",
+        "invalid" => "INVALID",
+        "unavailable" => "UNAVAILABLE",
+        "write_error" => "WRITE ERROR",
+        "verify_error" => "VERIFICATION ERROR",
+        _ => value
     };
     private void CloseSession()
     {
@@ -501,9 +522,8 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         _reconnect.Pause();
         CloseSession();
         ShowConnection(true);
-        Error = "";
-        Storage = "Déconnecté ; état distant non vérifié.";
-        Message = "Reconnexion automatique suspendue. Choisissez un contrôleur pour reprendre.";
+        Storage = "Disconnected; remote state not verified.";
+        Message = "Automatic reconnection paused. Choose a controller to resume.";
     }
     public void Dispose()
     {

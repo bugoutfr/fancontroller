@@ -1,0 +1,26 @@
+{
+  "status": "WIP - NOT FOR FABRICATION",
+  "kicad_version": "10.0.7",
+  "electrical_components": 71,
+  "mounting_holes": 4,
+  "checked_physical_pads": 280,
+  "functional_nets": 47,
+  "pcb_nets_including_intentional_nc": 80,
+  "track_segments": 5372,
+  "vias": 178,
+  "erc_errors": 0,
+  "erc_warnings": 0,
+  "drc_physical_errors": 0,
+  "drc_warnings": 0,
+  "drc_warning_types": {},
+  "schematic_parity_issues": 0,
+  "unconnected_items": 0,
+  "unconnected_details": [],
+  "manufacturing_blockers": [
+    "SATA electrical P1 orientation and opposite locating hole unverified",
+    "Connector and fuse current/I2t qualifications outstanding",
+    "USB current before enumeration, UART margins and powered-off host behavior untested",
+    "LDO thermal copper/dissipation and 3A fan startup untested",
+    "Via-in-pad is a hand-built prototype assumption, not an assembly specification"
+  ]
+}

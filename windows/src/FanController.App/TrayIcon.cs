@@ -11,6 +11,7 @@ internal sealed class TrayIcon : IDisposable
     private readonly nint _icon;
     private readonly nint _disconnectedIcon;
     private bool _connected;
+    private bool _french;
     private readonly Action _open, _quit, _hide;
     private readonly DispatcherQueue _dispatcher;
     private readonly SubclassProc _procedure;
@@ -56,8 +57,9 @@ internal sealed class TrayIcon : IDisposable
         Size = (uint)Marshal.SizeOf<NotifyIconData>(), Window = _window, Id = 1,
         Flags = 1 | 2 | 4, Callback = CallbackMessage,
         Icon = _connected ? _icon : _disconnectedIcon,
-        Tip = _connected ? "FanController — connecté — double-clic pour ouvrir" :
-            "FanController — déconnecté — double-clic pour ouvrir",
+        Tip = _french
+            ? (_connected ? "FanController — connecté — double-clic pour ouvrir" : "FanController — déconnecté — double-clic pour ouvrir")
+            : (_connected ? "FanController — connected — double-click to open" : "FanController — disconnected — double-click to open"),
         Info = "", InfoTitle = ""
     };
     private bool AddIcon()
@@ -76,6 +78,14 @@ internal sealed class TrayIcon : IDisposable
             Diagnostics.Record(new Win32Exception(Marshal.GetLastWin32Error(),
                 "Mise à jour de l’état de l’icône de notification impossible."));
         }
+    }
+
+    public void SetFrench(bool french)
+    {
+        if (_disposed || _french == french) return;
+        _french = french;
+        var data = Data();
+        Shell_NotifyIcon(1, ref data);
     }
 
     private nint ProcessMessage(nint window, uint message, nuint wParam, nint lParam, nuint id, nuint data)
@@ -111,8 +121,8 @@ internal sealed class TrayIcon : IDisposable
         if (menu == 0) throw new Win32Exception(Marshal.GetLastWin32Error(), "Menu de notification indisponible.");
         try
         {
-            AppendMenu(menu, 0, 1, "Ouvrir FanController");
-            AppendMenu(menu, 0, 2, "Quitter (arrêter l’acquisition)");
+            AppendMenu(menu, 0, 1, _french ? "Ouvrir FanController" : "Open FanController");
+            AppendMenu(menu, 0, 2, _french ? "Quitter (arrêter l’acquisition)" : "Quit (stop acquisition)");
             GetCursorPos(out var point);
             SetForegroundWindow(_window);
             var choice = TrackPopupMenu(menu, 0x100 | 0x2, point.X, point.Y, 0, _window, 0);

@@ -1,0 +1,2 @@
+(version 1)
+(rule "12V main route 2mm minimum" (condition "A.Type == 'Track' && (A.NetName == '+12V_FAN' || A.NetName == '+12V_SATA')") (constraint track_width (min 1.0) (opt 2.0)))

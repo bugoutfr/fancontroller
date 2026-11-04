@@ -1,67 +1,35 @@
 # FanController
 
-Controleur autonome de quatre ventilateurs PWM sur ESP32, accompagne d'un
-client Windows local pour la configuration et le suivi par Bluetooth BLE.
-Aucun service cloud ni backend n'est necessaire.
+Standalone four-channel PWM fan controller based on the ESP32, with a local Windows client for Bluetooth Low Energy configuration and monitoring. No cloud service, account, or backend is required.
 
-## Fonctionnalites
+## Features
 
-- Deux sondes NTC 10 kOhm / beta 3950, chacune associee a deux ventilateurs.
-- Un profil par sonde, avec interpolation lineaire entre les points.
-- Forcage individuel du PWM et mesure des vitesses par les entrees TACH.
-- Securite thermique prioritaire sur les consignes manuelles.
-- Application des reglages en RAM et sauvegarde explicite en NVS pour les
-  retrouver au prochain demarrage.
-- Appairage BLE persistant autorise physiquement par le bouton BOOT.
-- Client Windows en francais : graphiques des profils, historique local
-  temperatures/RPM sur 30 jours et fonctionnement en zone de notification.
-- Connexion automatique au dernier controleur memorise encore appaire dans
-  Windows et reconnexion apres coupure, sans rejouer les ecritures interrompues.
+- Two 10 kΩ / B3950 NTC sensors, each assigned to two fans.
+- Independent temperature profiles with linear interpolation.
+- Per-fan PWM override and tachometer (TACH) speed measurement.
+- Thermal protection takes priority over manual settings.
+- Settings are applied in RAM and saved explicitly to NVS for persistence across restarts.
+- BLE pairing is physically authorized with the ESP32 BOOT button.
+- Windows client with profile charts, local 30-day temperature/RPM history, and system-tray operation.
+- Automatic reconnection to the last Windows-paired controller. Interrupted writes are never replayed.
 
-La regulation continue sur l'ESP32 sans ordinateur ni connexion Bluetooth.
-Le pourcentage commande le PWM : ce n'est pas un asservissement de la vitesse
-en tours par minute.
+Temperature control runs on the ESP32 without a computer or Bluetooth connection. The percentage controls PWM duty cycle; it is not closed-loop RPM control.
 
-## Organisation et documentation
+## Project layout
 
-| Repertoire | Contenu | Documentation principale |
+| Directory | Contents | Guide |
 |---|---|---|
-| [esp32](esp32/) | Firmware Arduino / PlatformIO, configuration materielle et tests C++ | [Guide du firmware](esp32/README.md) |
-| [windows](windows/) | Client WinUI 3 / .NET 10 pour Windows 11 x64 et tests .NET | [Guide du client Windows](windows/README.md) |
+| [esp32](esp32/) | Arduino / PlatformIO firmware, hardware configuration, and C++ tests | [Firmware guide](esp32/README.md) |
+| [windows](windows/) | WinUI 3 / .NET 10 client for Windows 11 x64 and .NET tests | [Windows client guide](windows/README.md) |
+| [hardware](hardware/) | KiCad prototype board CAD | [Hardware guide](hardware/README.md) |
 
-### Firmware et montage
+The KiCad board is explicitly a work in progress and is **not ready for fabrication**. It does not replace the firmware wiring diagram.
 
-Le [guide ESP32](esp32/README.md) detaille le cablage GPIO, les ponts NTC,
-le filtrage, la calibration, les protections thermiques, le protocole JSON BLE,
-l'appairage, la persistance NVS et les commandes de compilation/test.
-
-- Schema electrique : [image PNG](esp32/docs/schema-electrique.png) et
-  [version vectorielle SVG](esp32/docs/schema-electrique.svg).
-- Parametres materiels : [HardwareConfig.h](esp32/include/HardwareConfig.h).
-- Environnement et dependances : [platformio.ini](esp32/platformio.ini).
-
-### Client Windows
-
-Le [guide Windows](windows/README.md) couvre les prerequis, la compilation,
-la publication, l'utilisation, l'historique, le systray et le depannage BLE.
-
-Documents complementaires :
-
-- [Plan initial du client](windows/.azure/project-plan.md).
-- [Etat de livraison initial](windows/.azure/integration-plan.md).
-- [Compte rendu de verification](windows/.azure/verification.md).
-
-Les plans et comptes rendus decrivent leurs etapes de livraison respectives ;
-certaines indications precedant les evolutions d'appairage et d'interface
-sont historiques. Les guides principaux de chaque sous-projet decrivent
-le fonctionnement actuel. Le nom du dossier `.azure` ne signifie pas que
-le projet utilise Azure.
-
-## Demarrage rapide
+## Quick start
 
 ### ESP32
 
-Depuis le repertoire [esp32](esp32/), avec PlatformIO :
+From `esp32`, with PlatformIO installed:
 
 ```powershell
 pio run -e esp32dev
@@ -69,14 +37,11 @@ pio run -e esp32dev -t upload
 pio device monitor -b 115200
 ```
 
-Verifier le [cablage et les precautions d'alimentation](esp32/README.md#cablage)
-avant le televersement. Ne pas cumuler USB alimente et 5 V sur VIN sans
-confirmation de l'isolation des alimentations de la carte.
+Review the [wiring and power precautions](esp32/README.md#wiring) before uploading. Do not connect powered USB and 5 V to VIN together unless supply isolation has been confirmed.
 
 ### Windows
 
-Depuis le repertoire [windows](windows/), avec les prerequis du
-[guide de compilation](windows/README.md#construire-tester-lancer) :
+From `windows`, with the prerequisites in the [Windows guide](windows/README.md):
 
 ```powershell
 dotnet restore .\FanController.sln
@@ -85,30 +50,23 @@ dotnet publish .\src\FanController.App\FanController.App.csproj -c Release -r wi
 .\artifacts\desktop\FanController.App.exe
 ```
 
-Distribuer tout le dossier de publication, pas uniquement l'executable.
-Les sorties de compilation, dependances telechargees et publications sont
-exclues de Git par les fichiers `.gitignore`.
+Distribute the complete publish directory, not only the executable.
 
-### Premier appairage
+## First pairing
 
-1. Apres le demarrage normal de l'ESP32, maintenir **BOOT 2 secondes puis
-   relacher** pour ouvrir une fenetre d'appairage de 60 secondes.
-2. Rechercher le controleur dans le client Windows, puis connecter/appairer.
-3. Les connexions suivantes reutilisent les cles memorisees.
+1. Start the ESP32 normally, hold **BOOT for 2 seconds**, then release to open a 60-second pairing window.
+2. Search for the controller in the Windows client and connect/pair.
+3. Subsequent connections reuse the stored keys.
 
-**BOOT 10 secondes puis relacher** revoque le proprietaire ; supprimer aussi
-l'appairage Windows avant de recommencer. Ne pas maintenir BOOT pendant un
-reset. Le mode **Just Works** chiffre la liaison mais ne protege pas contre
-une interception active au premier appairage : effectuer celui-ci dans un
-environnement de confiance.
+Holding **BOOT for 10 seconds** and releasing revokes the owner. Remove the Windows pairing before pairing again. Do not hold BOOT during reset. **Just Works** encrypts the link but does not protect the first pairing against active interception; pair in a trusted environment.
+
+## License
+
+This project is distributed under the permissive [MIT License](LICENSE). Third-party dependencies retain their own licenses; see the relevant dependency documentation.
 
 ## Tests
 
-- Tests C++ du domaine, de l'integration firmware et de l'appairage :
-  [instructions ESP32](esp32/README.md#compilation-et-essais).
-- Tests .NET et verification de la fenetre reelle :
-  [instructions Windows](windows/README.md#vérification-et-limites) et
-  [script de smoke test](windows/scripts/Smoke-Desktop.ps1).
+- Firmware and pairing tests: [ESP32 guide](esp32/README.md#build-and-test).
+- Windows tests: [Windows guide](windows/README.md#build-test-and-run).
 
-Les tests sur ordinateur ne remplacent pas la verification du montage,
-des capteurs, des sorties PWM/TACH et du Bluetooth sur le materiel reel.
+Host tests do not replace checking sensors, PWM/TACH outputs, Bluetooth, and power behavior on real hardware.

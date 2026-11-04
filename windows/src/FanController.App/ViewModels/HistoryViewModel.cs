@@ -6,7 +6,7 @@ namespace FanController.App.ViewModels;
 
 public sealed record HistoryDevice(ulong Address)
 {
-    public string Label => $"Contrôleur {Address:X12}";
+    public string Label => $"Controller {Address:X12}";
 }
 
 public sealed class HistoryViewModel : ObservableObject
@@ -94,7 +94,7 @@ public sealed class HistoryViewModel : ObservableObject
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             Diagnostics.Record(ex);
-            Dispatch(() => { _writeError = $"Historique NON enregistré : {ex.Message}"; Message = _writeError; });
+            Dispatch(() => { _writeError = $"History NOT saved: {ex.Message}"; Message = _writeError; });
         }
     }
 
@@ -108,8 +108,13 @@ public sealed class HistoryViewModel : ObservableObject
         {
             var now = DateTimeOffset.UtcNow;
             await _store.PruneAsync(now);
-            var duration = range switch { 0 => TimeSpan.FromHours(1), 1 => TimeSpan.FromHours(24),
-                2 => TimeSpan.FromDays(7), _ => TimeSpan.FromDays(30) };
+            var duration = range switch
+            {
+                0 => TimeSpan.FromHours(1),
+                1 => TimeSpan.FromHours(24),
+                2 => TimeSpan.FromDays(7),
+                _ => TimeSpan.FromDays(30)
+            };
             var samples = await Task.Run(() => _store.ReadAsync(device.Address, now - duration, now));
             if (SelectedDevice != device) return;
             PlotSeries Series(int index, string name, string color)
@@ -122,10 +127,10 @@ public sealed class HistoryViewModel : ObservableObject
                 }
                 return new(name, color, points);
             }
-            Temperatures = [Series(0, "Sonde 1 • °C", "#5DD9C1"), Series(1, "Sonde 2 • °C", "#FFB86B")];
-            Rpm = [Series(2, "V1 • tr/min", "#5DD9C1"), Series(3, "V2 • tr/min", "#78A9FF"),
-                Series(4, "V3 • tr/min", "#FFB86B"), Series(5, "V4 • tr/min", "#D99CFF")];
-            Message = _writeError ?? "Mesures reçues et enregistrées sur ce PC • 30 jours • interruptions sans interpolation";
+            Temperatures = [Series(0, "Temperature 1 • °C", "#5DD9C1"), Series(1, "Temperature 2 • °C", "#FFB86B")];
+            Rpm = [Series(2, "Fan 1 • RPM", "#5DD9C1"), Series(3, "Fan 2 • RPM", "#78A9FF"),
+                Series(4, "Fan 3 • RPM", "#FFB86B"), Series(5, "Fan 4 • RPM", "#D99CFF")];
+            Message = _writeError ?? "Readings received and saved on this PC • 30 days • gaps are not interpolated";
             _lastRefresh = now;
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)

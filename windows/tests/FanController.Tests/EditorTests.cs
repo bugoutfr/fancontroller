@@ -35,7 +35,7 @@ public sealed class EditorTests
     [Fact]
     public void SimpleDashboardPreservesSafetyAndCanExposeTechnicalDetailsWithoutReplacingCards()
     {
-        var sensor = new SensorDisplay("Sonde 1");
+        var sensor = new SensorDisplay("Temperature 1");
         sensor.Update("Indisponible", "3200 mV, CIRCUIT OUVERT, sécurité ACTIVE", "CIRCUIT OUVERT, sécurité ACTIVE");
         Assert.Equal("CIRCUIT OUVERT, sécurité ACTIVE", sensor.DisplayDetails);
         sensor.Advanced = true;
@@ -119,8 +119,8 @@ public sealed class EditorTests
     [Fact]
     public void TelemetryCardsUpdatePropertiesWithoutReplacingItemsOrResettingCollections()
     {
-        var sensor = new SensorDisplay("Sonde 1");
-        var fan = new FanDisplay("Ventilateur 1 • sonde 1");
+        var sensor = new SensorDisplay("Temperature 1");
+        var fan = new FanDisplay("Ventilateur 1 • Temperature 1");
         var sensors = new System.Collections.ObjectModel.ObservableCollection<SensorDisplay> { sensor };
         var fans = new System.Collections.ObjectModel.ObservableCollection<FanDisplay> { fan };
         var collectionChanges = 0;
