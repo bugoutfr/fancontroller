@@ -13,7 +13,9 @@ public sealed class ProtocolSessionTests
         using var session = new ProtocolSession(transport);
         var request = session.RequestAsync(new
         {
-            cmd = "set_profile", sensor = 1, points = new[] { new CurvePoint(25.5, 30), new CurvePoint(60, 100) }
+            cmd = "set_profile",
+            sensor = 1,
+            points = new[] { new CurvePoint(25.5, 30), new CurvePoint(60, 100) }
         });
         var command = await transport.NextAsync();
         Assert.Equal(25.5, command.GetProperty("points")[0].GetProperty("temperature").GetDouble());
@@ -29,9 +31,15 @@ public sealed class ProtocolSessionTests
     {
         using var transport = new FakeTransport();
         using var session = new ProtocolSession(transport);
-        var first = session.RequestAsync(new { cmd = "get_status" });
+        var first = session.RequestAsync(new
+        {
+            cmd = "get_status"
+        });
         await transport.NextAsync();
-        var second = session.RequestAsync(new { cmd = "save" });
+        var second = session.RequestAsync(new
+        {
+            cmd = "save"
+        });
         Assert.False(transport.Commands.Reader.TryRead(out _));
         transport.Emit(Encoding.UTF8.GetBytes("""{"ok":true,"cmd":"get_status"}"""));
         Assert.False(first.IsCompleted);
@@ -47,9 +55,15 @@ public sealed class ProtocolSessionTests
     {
         using var transport = new FakeTransport();
         using var session = new ProtocolSession(transport, TimeSpan.FromMilliseconds(100));
-        var first = session.RequestAsync(new { cmd = "get_status" });
+        var first = session.RequestAsync(new
+        {
+            cmd = "get_status"
+        });
         await transport.NextAsync();
-        var queued = session.RequestAsync(new { cmd = "save" });
+        var queued = session.RequestAsync(new
+        {
+            cmd = "save"
+        });
         await Assert.ThrowsAsync<TimeoutException>(() => first);
         transport.Reply("""{"ok":true,"cmd":"get_status"}""");
         await Assert.ThrowsAsync<IOException>(() => queued);
@@ -77,7 +91,10 @@ public sealed class ProtocolSessionTests
     {
         using var transport = new FakeTransport();
         using var session = new ProtocolSession(transport);
-        var request = session.RequestAsync(new { cmd = "get_status" });
+        var request = session.RequestAsync(new
+        {
+            cmd = "get_status"
+        });
         await transport.NextAsync();
         transport.Reply(response, 1000);
         await Assert.ThrowsAnyAsync<Exception>(() => request);
@@ -89,7 +106,10 @@ public sealed class ProtocolSessionTests
     {
         using var transport = new FakeTransport();
         using var session = new ProtocolSession(transport);
-        var task = session.RequestAsync(new { cmd = "save" });
+        var task = session.RequestAsync(new
+        {
+            cmd = "save"
+        });
         await transport.NextAsync();
         transport.Reply("""{"ok":false,"error":"storage_error","message":"écriture refusée"}""");
         var error = await Assert.ThrowsAsync<IOException>(() => task);
@@ -104,7 +124,10 @@ public sealed class ProtocolSessionTests
         Assert.False(s1.IsValid);
         using var transport = new FakeTransport();
         using var s2 = new ProtocolSession(transport);
-        var task = s2.RequestAsync(new { cmd = "save" });
+        var task = s2.RequestAsync(new
+        {
+            cmd = "save"
+        });
         await transport.NextAsync();
         transport.LoseConnection();
         await Assert.ThrowsAsync<IOException>(() => task);
@@ -117,9 +140,15 @@ public sealed class ProtocolSessionTests
         using var session = new ProtocolSession(transport);
         using var inFlight = new CancellationTokenSource();
         using var queued = new CancellationTokenSource();
-        var first = session.RequestAsync(new { cmd = "get_status" }, inFlight.Token);
+        var first = session.RequestAsync(new
+        {
+            cmd = "get_status"
+        }, inFlight.Token);
         await transport.NextAsync();
-        var second = session.RequestAsync(new { cmd = "save" }, queued.Token);
+        var second = session.RequestAsync(new
+        {
+            cmd = "save"
+        }, queued.Token);
         queued.Cancel();
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => second);
         Assert.True(session.IsValid);

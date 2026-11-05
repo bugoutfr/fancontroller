@@ -6,19 +6,18 @@ namespace FanController.Tests;
 
 public sealed class ControllerServiceTests
 {
-    private static Configuration Config => new(1,
-        [[new(25, 30), new(65, 100)], [new(20, 20), new(65, 100)]],
-        [new("auto", 0), new("fixed", 45.5), new("auto", 0), new("fixed", 60)]);
-    private static Telemetry Status => new(uint.MaxValue, true, "loaded", true,
-        [new(1, 1650.0625, 25.5, "none", false), new(2, 3300, null, "open_circuit", true)],
-        Enumerable.Range(1, 4).Select(f => new FanStatus(f, (f - 1) / 2 + 1,
-            "auto", 0, 50.25, 50.25, 2200.75, true, true)).ToArray());
-    private static void ReplyConfig(FakeTransport transport) => transport.Reply(JsonSerializer.Serialize(
-        new { ok = true, cmd = "get_config", dirty = true, storage = "loaded", data = Config }, WireJson.Options));
-    private static void ReplyStatus(FakeTransport transport) => transport.Reply(JsonSerializer.Serialize(
-        new { ok = true, cmd = "get_status", data = Status }, WireJson.Options));
+    private static Configuration Config => ControllerTestData.Config;
+
+    private static void ReplyConfig(FakeTransport transport) => ControllerTestData.ReplyConfig(transport);
+
+    private static void ReplyStatus(FakeTransport transport) => ControllerTestData.ReplyStatus(transport);
     private static void Ack(FakeTransport transport, string name) =>
-        transport.Reply(JsonSerializer.Serialize(new { ok = true, cmd = name, dirty = true }));
+        transport.Reply(JsonSerializer.Serialize(new
+        {
+            ok = true,
+            cmd = name,
+            dirty = true
+        }));
 
     [Fact]
     public async Task ResynchronizationOnlyReadsAndHandlesNullTemperatureAndUintUptime()
@@ -145,8 +144,18 @@ public sealed class ControllerServiceTests
         using var session = new ProtocolSession(transport);
         var task = new ControllerService(session).SynchronizeAsync();
         await transport.NextAsync();
-        var bad = Config with { Profiles = [[new(20, 80), new(20, 40)], [new(20, 20), new(65, 100)]] };
-        transport.Reply(JsonSerializer.Serialize(new { ok = true, cmd = "get_config", dirty = true, storage = "loaded", data = bad }, WireJson.Options));
+        var bad = Config with
+        {
+            Profiles = [[new(20, 80), new(20, 40)], [new(20, 20), new(65, 100)]]
+        };
+        transport.Reply(JsonSerializer.Serialize(new
+        {
+            ok = true,
+            cmd = "get_config",
+            dirty = true,
+            storage = "loaded",
+            data = bad
+        }, WireJson.Options));
         await Assert.ThrowsAsync<ArgumentException>(() => task);
         Assert.False(session.IsValid);
     }

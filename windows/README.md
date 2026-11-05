@@ -14,6 +14,16 @@ dotnet publish .\src\FanController.App\FanController.App.csproj -c Release -r wi
 .\artifacts\desktop\FanController.App.exe
 ```
 
+For the combined build, public API documentation checks, host tests, and formatting verification:
+
+```powershell
+.\scripts\Test-CodeQuality.ps1
+```
+
+Production projects generate XML documentation and treat missing or malformed public API documentation as build errors.
+Formatting follows `.editorconfig`; apply it with `dotnet format whitespace .\FanController.sln`.
+Document public contracts, cancellation and ownership rather than adding comments that repeat implementation details.
+
 The publish command uses the packages restored above and writes the Release application to `artifacts\desktop`.
 
 Development run:
@@ -55,9 +65,32 @@ The RSSI display reports signal strength received by the ESP32 from Windows and 
 
 ## Architecture
 
-- `FanController.Core`: protocol framing/session, controller service, validation, reconnect policy, history storage, and plot series.
-- `FanController.App`: WinUI interface, Windows BLE transport, tray icon, startup integration, and view models.
-- `tests/FanController.Tests`: host tests using a fake transport.
+- `FanController.Core`: protocol framing/session, controller transactions, connection/acquisition lifecycle,
+  reconnect policy, validation, history storage, and plot series. It has no WinUI or Windows BLE dependencies.
+- `FanController.App`: WinUI views/converters, Windows BLE adapters, tray/startup integration,
+  and presentation models. `Services/DesktopServices.cs` is the composition root:
+  storage paths, logging, dispatching, scanning and startup settings are supplied there rather than created by view models.
+- `tests/FanController.Tests`: host tests using fake transports and stores. The portable view model sources
+  are linked directly, as are their service contracts; only resource lookup is stubbed, not presentation logic.
+
+`ControllerConnection` owns each transport, protocol session, request/acquisition lifetime and the reconnection task.
+Disconnect and shutdown cancel operations, await their completion, then dispose session resources.
+`HistoryViewModel` owns the shared history store and disposes it only after acquisition and its own reads have stopped.
+Window shutdown awaits this sequence before closing; normal close/minimize still hides to the tray.
+Never retry interrupted writes automatically: reconnecting only reads actual configuration and status.
+
+View models expose booleans rather than WinUI visibility values and receive a UI dispatcher for background notifications.
+Shared telemetry cards keep their identity and binding notifications when readings change.
+Validation errors carry a resource key in exception metadata, leaving translation in the presentation layer;
+there is no mutable global localization callback in Core.
+
+History disk failures, command failures and language preference errors are reported without claiming success.
+Missing optional localization keys use their fallback; technical resource lookup failures are logged once per error code.
+Logs are best-effort so an error in diagnostics cannot cause a second application failure.
+
+Host tests cover interrupted connections/writes, reconnection without pairing or replay,
+shutdown during discovery/acquisition/history reads, retained drafts, command reentrancy, and preference failures.
+They do not replace hardware tests of Windows BLE pairing or interactive WinUI/tray behavior.
 
 The client uses .NET APIs, `System.Text.Json`, `INotifyPropertyChanged`, and `ICommand`; it has no third-party BLE or MVVM dependency. The WinUI and test package versions are pinned in the project files.
 

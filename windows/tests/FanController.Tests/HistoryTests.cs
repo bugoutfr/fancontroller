@@ -95,7 +95,10 @@ public sealed class HistoryTests : IDisposable
     [Fact]
     public async Task InvalidSamplesAreNotWritten()
     {
-        var sample = Sample(Now) with { Rpm = [double.NaN, 0, 0, 0] };
+        var sample = Sample(Now) with
+        {
+            Rpm = [double.NaN, 0, 0, 0]
+        };
         await Assert.ThrowsAsync<InvalidDataException>(() => new HistoryStore(_directory).AppendAsync(1, sample));
         Assert.False(Directory.Exists(_directory));
     }
@@ -108,12 +111,16 @@ public sealed class HistoryTests : IDisposable
             Enumerable.Range(1, 4).Select(f => new FanStatus(f, (f - 1) / 2 + 1, "auto", 0, 40, 40, 1000, true, false)).ToArray());
         var json = JsonSerializer.SerializeToElement(old, WireJson.Options);
         Assert.Null(WireJson.Read<Telemetry>(json).FirmwareVersion);
-        json = JsonSerializer.SerializeToElement(old with { FirmwareVersion = "1.1.0" }, WireJson.Options);
+        json = JsonSerializer.SerializeToElement(old with
+        {
+            FirmwareVersion = "1.1.0"
+        }, WireJson.Options);
         Assert.Equal("1.1.0", WireJson.Read<Telemetry>(json).FirmwareVersion);
     }
 
     public void Dispose()
     {
-        if (Directory.Exists(_directory)) Directory.Delete(_directory, true);
+        if (Directory.Exists(_directory))
+            Directory.Delete(_directory, true);
     }
 }

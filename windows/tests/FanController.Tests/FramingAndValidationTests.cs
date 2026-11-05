@@ -24,7 +24,8 @@ public sealed class FramingAndValidationTests
     {
         var framer = new LineFramer();
         var output = new List<string>();
-        foreach (var b in Encoding.UTF8.GetBytes("un\ndeux\n")) output.AddRange(framer.Push(new[] { b }));
+        foreach (var b in Encoding.UTF8.GetBytes("un\ndeux\n"))
+            output.AddRange(framer.Push(new[] { b }));
         Assert.Equal(new[] { "un", "deux" }, output);
         Assert.Equal(new[] { "a", "b" }, framer.Push("a\nb\n"u8));
     }
@@ -110,8 +111,14 @@ public sealed class FramingAndValidationTests
             [new(1, 1650, 25, "none", false), new(2, 1650, 25, "none", false)],
             Enumerable.Range(1, 4).Select(fan => new FanStatus(fan, fan <= 2 ? 1 : 2,
                 "auto", 0, 30, 30, 1000, true, false)).ToArray(), "1.1.3", rssi);
-        Validation.Status(telemetry with { BleRssiDbm = null });
-        Validation.Status(telemetry with { BleRssiDbm = -62 });
+        Validation.Status(telemetry with
+        {
+            BleRssiDbm = null
+        });
+        Validation.Status(telemetry with
+        {
+            BleRssiDbm = -62
+        });
         Assert.Throws<InvalidDataException>(() => Validation.Status(telemetry));
     }
 
@@ -132,12 +139,25 @@ public sealed class FramingAndValidationTests
     [Fact]
     public void AdvertisementAndScanResponseNamesAreMergedInBothOrders()
     {
-        var index = new AdvertisementIndex();
+        var index = new AdvertisementIndex(() => "Contrôleur UART (nom en attente)");
         Assert.Contains("nom en attente", index.Add(42, "", true, -50)!.Name);
         Assert.Equal("ESP32-FanController", index.Add(42, "ESP32-FanController", false, -40)!.Name);
         Assert.Equal("ESP32-FanController", index.Add(42, "", true, -30)!.Name);
         Assert.Null(index.Add(43, "Autre appareil", false, -40));
         Assert.NotNull(index.Add(44, "ESP32-FanController", false, -40));
         Assert.Equal("ESP32-FanController", index.Add(44, "", true, -50)!.Name);
+    }
+
+    [Fact]
+    public void LocalizationDoesNotDependOnMutableGlobalResolvers()
+    {
+        var french = new AdvertisementIndex(() => "Nom en attente");
+        var english = new AdvertisementIndex(() => "Pending name");
+        Assert.Equal("Nom en attente", french.Add(42, "", true, -50)!.Name);
+        Assert.Equal("Pending name", english.Add(42, "", true, -50)!.Name);
+        Assert.Equal("Nom en attente", french.Add(43, "", true, -50)!.Name);
+
+        var error = Assert.Throws<ArgumentException>(() => Validation.Profile([new(20, 50)]));
+        Assert.Equal("Validation.ProfilePointCount", error.Data[Validation.ResourceKey]);
     }
 }

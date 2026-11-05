@@ -3,10 +3,12 @@ using Windows.Foundation;
 
 namespace FanController.App.Controls;
 
+/// <summary>Dispose les enfants en deux colonnes égales, avec une hauteur commune par ligne.</summary>
 public sealed class TwoColumnPanel : Panel
 {
     private const double Gap = 12;
 
+    /// <inheritdoc />
     protected override Size MeasureOverride(Size availableSize)
     {
         var width = double.IsFinite(availableSize.Width) ? availableSize.Width : 1000;
@@ -20,11 +22,14 @@ public sealed class TwoColumnPanel : Panel
                 Children[j].Measure(new Size(columnWidth, double.PositiveInfinity));
                 rowHeight = Math.Max(rowHeight, Children[j].DesiredSize.Height);
             }
+
             height += rowHeight + (i == 0 ? 0 : Gap);
         }
+
         return new Size(width, height);
     }
 
+    /// <inheritdoc />
     protected override Size ArrangeOverride(Size finalSize)
     {
         var columnWidth = Math.Max(0, (finalSize.Width - Gap) / 2);
@@ -32,11 +37,15 @@ public sealed class TwoColumnPanel : Panel
         for (var i = 0; i < Children.Count; i += 2)
         {
             var rowHeight = Children[i].DesiredSize.Height;
-            if (i + 1 < Children.Count) rowHeight = Math.Max(rowHeight, Children[i + 1].DesiredSize.Height);
+            if (i + 1 < Children.Count)
+                rowHeight = Math.Max(rowHeight, Children[i + 1].DesiredSize.Height);
+
             for (var j = i; j < Math.Min(i + 2, Children.Count); j++)
                 Children[j].Arrange(new Rect((j - i) * (columnWidth + Gap), y, columnWidth, rowHeight));
+
             y += rowHeight + Gap;
         }
+
         return finalSize;
     }
 }

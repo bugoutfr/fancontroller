@@ -5,16 +5,23 @@ using Microsoft.Windows.ApplicationModel.Resources;
 
 namespace FanController.App.Localization;
 
+/// <summary>Looks up desktop resources and applies the selected English or French UI language.</summary>
 public static class Localizer
 {
     private static readonly Lazy<ResourceManager> Manager = new(() => new(
         Path.Combine(AppContext.BaseDirectory, "FanController.App.pri")));
     private static ResourceContext? _context;
+    private static readonly HashSet<int> ReportedFailures = [];
+    private static readonly object FailureSync = new();
 
+    /// <summary>The attached localization resource key.</summary>
     public static readonly DependencyProperty KeyProperty = DependencyProperty.RegisterAttached(
         "Key", typeof(string), typeof(Localizer), new PropertyMetadata(null, OnKeyChanged));
 
+    /// <summary>Reads an element's attached resource key.</summary>
     public static string GetKey(DependencyObject element) => element.GetValue(KeyProperty) as string ?? "";
+
+    /// <summary>Sets a resource key and applies matching resource properties to the element.</summary>
     public static void SetKey(DependencyObject element, string value) => element.SetValue(KeyProperty, value);
 
     private static void OnKeyChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
@@ -33,8 +40,13 @@ public static class Localizer
             ApplyToElement(d);
     }
 
+    /// <summary>Changes resource qualifiers and numeric/UI culture to English or French.</summary>
+    /// <exception cref="ArgumentException">The requested language is unsupported.</exception>
     public static void SetLanguage(string language)
     {
+        if (language is not ("en" or "fr"))
+            throw new ArgumentException("The language must be en or fr.", nameof(language));
+
         var tag = language == "fr" ? "fr-FR" : "en-US";
         var manager = Manager.Value;
         var context = manager.CreateResourceContext();
@@ -46,23 +58,35 @@ public static class Localizer
         CultureInfo.DefaultThreadCurrentUICulture = CultureInfo.CurrentUICulture;
     }
 
+    /// <summary>Reads a resource, using the fallback for an absent key and logging technical lookup failures.</summary>
     public static string Get(string key, string fallback = "")
     {
         try
         {
             var context = _context ?? Manager.Value.CreateResourceContext();
             var lookup = key.Replace('.', '/');
-            return Manager.Value.MainResourceMap.GetSubtree("Resources").GetValue(lookup, context).ValueAsString;
+            return Manager.Value.MainResourceMap.GetSubtree("Resources").TryGetValue(lookup, context)?.ValueAsString ?? fallback;
         }
         catch (Exception ex) when (ex is System.Runtime.InteropServices.COMException or ArgumentException or InvalidOperationException or IOException or UnauthorizedAccessException)
         {
+            lock (FailureSync)
+            {
+                if (ReportedFailures.Add(ex.HResult))
+                {
+                    ex.Data["ResourceKey"] = key;
+                    Diagnostics.Record(ex);
+                }
+            }
             return fallback;
         }
     }
 
+    /// <summary>Formats a localized resource using the selected numeric culture.</summary>
+    /// <exception cref="FormatException">The resource format and arguments are incompatible.</exception>
     public static string Format(string key, string fallback, params object?[] args) =>
         string.Format(CultureInfo.CurrentCulture, Get(key, fallback), args);
 
+    /// <summary>Refreshes localized properties throughout visual and logical content trees.</summary>
     public static void Apply(DependencyObject root)
     {
         var visited = new HashSet<DependencyObject>(ReferenceEqualityComparer.Instance);
@@ -71,7 +95,8 @@ public static class Localizer
 
     private static void ApplyCore(DependencyObject element, HashSet<DependencyObject> visited)
     {
-        if (element is null || !visited.Add(element)) return;
+        if (element is null || !visited.Add(element))
+            return;
 
         ApplyToElement(element);
 
@@ -102,7 +127,8 @@ public static class Localizer
         if (element is Microsoft.UI.Xaml.Controls.ItemsControl ic)
         {
             foreach (var item in ic.Items)
-                if (item is DependencyObject d) ApplyCore(d, visited);
+                if (item is DependencyObject d)
+                    ApplyCore(d, visited);
         }
 
         if (element is Microsoft.UI.Xaml.Controls.Expander exp && exp.Content is DependencyObject expChild)
@@ -118,11 +144,13 @@ public static class Localizer
             lineChart.RefreshLocalization();
 
         var key = GetKey(element);
-        if (string.IsNullOrEmpty(key)) return;
+        if (string.IsNullOrEmpty(key))
+            return;
         foreach (var propertyName in new[] { "Text", "Header", "Content", "PlaceholderText", "OnContent", "OffContent" })
         {
             var property = element.GetType().GetProperty(propertyName, BindingFlags.Instance | BindingFlags.Public);
-            if (property is null || !property.CanWrite || !property.CanRead) continue;
+            if (property is null || !property.CanWrite || !property.CanRead)
+                continue;
             var resourceKey = propertyName switch
             {
                 "OnContent" => $"{key}.On",
@@ -130,14 +158,17 @@ public static class Localizer
                 _ => $"{key}.{propertyName}"
             };
             var value = TryGet(resourceKey);
-            if (value is not null) property.SetValue(element, value);
+            if (value is not null)
+                property.SetValue(element, value);
         }
         if (element is FrameworkElement frameworkElement)
         {
             var automationName = TryGet($"{key}.AutomationProperties.Name");
-            if (automationName is not null) Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(frameworkElement, automationName);
+            if (automationName is not null)
+                Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(frameworkElement, automationName);
             var toolTip = TryGet($"{key}.ToolTipService.ToolTip");
-            if (toolTip is not null) Microsoft.UI.Xaml.Controls.ToolTipService.SetToolTip(frameworkElement, toolTip);
+            if (toolTip is not null)
+                Microsoft.UI.Xaml.Controls.ToolTipService.SetToolTip(frameworkElement, toolTip);
         }
     }
 

@@ -41,7 +41,8 @@ public sealed class ReconnectionTests
         }, errors.Add, (delay, ct) =>
         {
             waits.Add(delay.TotalSeconds);
-            if (waits.Count == 10) lifetime.Cancel();
+            if (waits.Count == 10)
+                lifetime.Cancel();
             return Task.CompletedTask;
         });
         await loop.RunAsync(lifetime.Token);
@@ -66,10 +67,17 @@ public sealed class ReconnectionTests
         }, ex => Assert.Fail(ex.Message), (delay, ct) =>
         {
             ticks++;
-            if (ticks == 1) connected = false; // Unexpected link loss.
-            if (ticks == 2) { policy.Pause(); connected = false; }
-            if (ticks == 4) policy.Resume(); // Explicit Connect.
-            if (ticks == 5) lifetime.Cancel();
+            if (ticks == 1)
+                connected = false; // Unexpected link loss.
+            if (ticks == 2)
+            {
+                policy.Pause();
+                connected = false;
+            }
+            if (ticks == 4)
+                policy.Resume(); // Explicit Connect.
+            if (ticks == 5)
+                lifetime.Cancel();
             return Task.CompletedTask;
         });
         await loop.RunAsync(lifetime.Token);
@@ -126,7 +134,8 @@ public sealed class ReconnectionTests
             return Task.FromResult(false);
         }, ex => Assert.Fail(ex.Message), (_, _) =>
         {
-            if (attempts == 3) lifetime.Cancel();
+            if (attempts == 3)
+                lifetime.Cancel();
             return Task.CompletedTask;
         });
         await loop.RunAsync(lifetime.Token);

@@ -5,9 +5,12 @@ using System.Runtime.InteropServices;
 
 namespace FanController.App;
 
+/// <summary>Initialise l'application WinUI et assure l'activation d'une instance unique.</summary>
 public partial class App : Application
 {
     private MainWindow? _window;
+
+    /// <summary>Initialise les cultures par défaut, la journalisation des erreurs et les ressources XAML.</summary>
     public App()
     {
         CultureInfo.DefaultThreadCurrentCulture = CultureInfo.GetCultureInfo("en-US");
@@ -15,6 +18,8 @@ public partial class App : Application
         UnhandledException += (_, e) => Diagnostics.Record(new Exception(e.Message, e.Exception));
         InitializeComponent();
     }
+
+    /// <inheritdoc />
     protected override async void OnLaunched(LaunchActivatedEventArgs args)
     {
         try
@@ -26,6 +31,7 @@ public partial class App : Application
                 Exit();
                 return;
             }
+
             instance.Activated += (_, activation) =>
             {
                 if (activation.Data is Windows.ApplicationModel.Activation.ILaunchActivatedEventArgs launch &&
@@ -33,11 +39,13 @@ public partial class App : Application
                     return;
                 _window?.DispatcherQueue.TryEnqueue(() => _window.ShowWindow());
             };
+
             _window = new MainWindow();
             if (Environment.GetCommandLineArgs().Contains("--startup"))
                 _window.AppWindow.Hide();
             else
                 _window.Activate();
+
             await _window.InitializeAsync();
         }
         catch (Exception ex)

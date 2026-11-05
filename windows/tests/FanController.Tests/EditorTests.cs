@@ -131,8 +131,8 @@ public sealed class EditorTests
         sensor.PropertyChanged += (_, args) => sensorChanges.Add(args.PropertyName);
         fan.PropertyChanged += (_, args) => fanChanges.Add(args.PropertyName);
 
-        Assert.Equal("En attente", sensor.Temperature);
-        Assert.Equal("En attente", fan.Rpm);
+        Assert.Equal("Waiting", sensor.Temperature);
+        Assert.Equal("Waiting", fan.Rpm);
         sensor.Update("25,0 °C", "aucun défaut");
         fan.Update("1 200 tr/min", "PWM 40 %");
         sensor.Update("Indisponible", "CIRCUIT OUVERT");
@@ -177,14 +177,16 @@ public sealed class EditorTests
         var edits = 0;
         profile.Edited += () => edits++;
         Assert.False(profile.RemoveCommand.CanExecute(null));
-        for (var i = 0; i < 6; i++) profile.AddCommand.Execute(null);
+        for (var i = 0; i < 6; i++)
+            profile.AddCommand.Execute(null);
         Assert.Equal(8, profile.Points.Count);
         Assert.False(profile.AddCommand.CanExecute(null));
         Assert.True(profile.RemoveCommand.CanExecute(null));
         profile.Points[0].Temperature = "21";
         Assert.Equal(7, edits);
         Validation.Profile(profile.Read());
-        for (var i = 0; i < 6; i++) profile.RemoveCommand.Execute(null);
+        for (var i = 0; i < 6; i++)
+            profile.RemoveCommand.Execute(null);
         Assert.Equal(2, profile.Points.Count);
         Assert.False(profile.RemoveCommand.CanExecute(null));
         Assert.Equal(2, profile.Read().Length);

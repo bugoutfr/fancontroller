@@ -1,11 +1,13 @@
 using FanController.App.Localization;
 using FanController.App.ViewModels;
+using FanController.App.Services;
 using Microsoft.UI.Xaml;
 using Windows.Graphics;
 using Microsoft.UI.Windowing;
 
 namespace FanController.App;
 
+/// <summary>Composes desktop services and owns window, language and tray presentation.</summary>
 public sealed partial class MainWindow : Window
 {
     private readonly MainViewModel _viewModel;
@@ -13,10 +15,14 @@ public sealed partial class MainWindow : Window
     private bool _quitting;
     private bool _initializingLanguage = true;
     private bool _isFrench;
+    private bool _shutdownStarted, _shutdownComplete;
+    private readonly LanguagePreferences _languagePreferences = new(
+        Path.Combine(DesktopServices.DataDirectory, "language.txt"));
 
+    /// <summary>Creates the desktop presentation and its platform service composition.</summary>
     public MainWindow()
     {
-        var language = DetectInitialLanguage();
+        var language = DetectInitialLanguage(out var languageError);
         Localizer.SetLanguage(language);
         InitializeComponent();
         LanguageSelector.SelectedIndex = language == "fr" ? 1 : 0;
@@ -25,7 +31,7 @@ public sealed partial class MainWindow : Window
         Root.Language = language == "fr" ? "fr-FR" : "en-US";
         Title = Localizer.Get("AppTitle");
 
-        _viewModel = new(DispatcherQueue);
+        _viewModel = DesktopServices.CreateViewModel(DispatcherQueue);
         Root.DataContext = _viewModel;
         Root.Loaded += (_, _) => ApplyLanguage();
 
@@ -38,36 +44,57 @@ public sealed partial class MainWindow : Window
         _tray.SetFrench(_isFrench);
         _viewModel.PropertyChanged += ConnectionChanged;
         _viewModel.History.PropertyChanged += ConnectionChanged;
-        AppWindow.Closing += (_, args) =>
+        AppWindow.Closing += async (_, args) =>
         {
-            if (_quitting) return;
-            if (!_tray.IsAvailable)
+            if (_shutdownComplete)
+                return;
+            args.Cancel = true;
+            if (!_quitting && _tray.IsAvailable)
             {
-                _quitting = true;
+                AppWindow.Hide();
                 return;
             }
-            args.Cancel = true;
-            AppWindow.Hide();
+
+            if (_shutdownStarted)
+                return;
+            _shutdownStarted = true;
+            try
+            {
+                await _viewModel.DisposeAsync();
+                _tray.Dispose();
+                _shutdownComplete = true;
+                Close();
+            }
+            catch (Exception ex)
+            {
+                _viewModel.ReportError(ex);
+                _shutdownStarted = false;
+                _quitting = false;
+                ShowWindow();
+            }
         };
         Closed += (_, _) =>
         {
             _viewModel.PropertyChanged -= ConnectionChanged;
             _viewModel.History.PropertyChanged -= ConnectionChanged;
             _tray.Dispose();
-            _viewModel.Dispose();
         };
         ApplyLanguage();
+        if (languageError is not null)
+            _viewModel.ReportError(languageError);
     }
 
-    private static string LanguagePath => Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "FanController", "language.txt");
-
-    private static string DetectInitialLanguage()
+    private string DetectInitialLanguage(out Exception? error)
     {
-        if (File.Exists(LanguagePath))
+        error = null;
+        try
         {
-            var saved = File.ReadAllText(LanguagePath).Trim();
-            if (saved is "fr" or "en") return saved;
+            if (_languagePreferences.Load() is { } saved)
+                return saved;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            error = ex;
         }
         return System.Globalization.CultureInfo.CurrentUICulture.TwoLetterISOLanguageName.Equals("fr", StringComparison.OrdinalIgnoreCase) ? "fr" : "en";
     }
@@ -88,14 +115,24 @@ public sealed partial class MainWindow : Window
 
     private void LanguageChanged(object sender, Microsoft.UI.Xaml.Controls.SelectionChangedEventArgs args)
     {
-        if (_initializingLanguage || LanguageSelector.SelectedIndex < 0) return;
+        if (_initializingLanguage || LanguageSelector.SelectedIndex < 0)
+            return;
         var language = LanguageSelector.SelectedIndex == 1 ? "fr" : "en";
-        Directory.CreateDirectory(Path.GetDirectoryName(LanguagePath)!);
-        File.WriteAllText(LanguagePath, language);
-        Localizer.SetLanguage(language);
-        _isFrench = language == "fr";
-        Root.Language = _isFrench ? "fr-FR" : "en-US";
-        ApplyLanguage();
+        try
+        {
+            _languagePreferences.Save(language);
+            Localizer.SetLanguage(language);
+            _isFrench = language == "fr";
+            Root.Language = _isFrench ? "fr-FR" : "en-US";
+            ApplyLanguage();
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            _initializingLanguage = true;
+            LanguageSelector.SelectedIndex = _isFrench ? 1 : 0;
+            _initializingLanguage = false;
+            _viewModel.ReportError(ex);
+        }
     }
 
     private void ApplyLanguage()
@@ -114,7 +151,8 @@ public sealed partial class MainWindow : Window
     internal void ShowWindow()
     {
         AppWindow.Show();
-        if (AppWindow.Presenter is OverlappedPresenter presenter) presenter.Restore();
+        if (AppWindow.Presenter is OverlappedPresenter presenter)
+            presenter.Restore();
         Activate();
     }
 
