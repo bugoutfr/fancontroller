@@ -147,35 +147,27 @@ void ThermalController::update(uint32_t now, const Config& config) {
     updateRpm(now);
 }
 
-void ThermalController::writeStatus(JsonObject data, const Config& config) const {
-    JsonArray sensors = data["sensors"].to<JsonArray>();
+ThermalStatus ThermalController::status(const Config& config) const {
+    ThermalStatus result{};
     for (size_t sensor = 0; sensor < SensorCount; ++sensor) {
-        const auto& state = sensors_[sensor];
-        JsonObject item = sensors.add<JsonObject>();
-        item["sensor"] = sensor + 1;
-        item["millivolts"] = state.millivolts;
-        if (state.temperature.fault == SensorFault::None) {
-            item["temperature"] = state.temperature.celsius;
-        } else {
-            item["temperature"] = nullptr;
-        }
-        item["fault"] = faultName(state.temperature.fault);
-        item["safety"] = safetyActive(state.temperature);
+        result.sensors[sensor] = {
+            sensors_[sensor].millivolts,
+            sensors_[sensor].temperature,
+            safetyActive(sensors_[sensor].temperature)
+        };
     }
-    JsonArray fans = data["fans"].to<JsonArray>();
     for (size_t fan = 0; fan < FanCount; ++fan) {
-        const auto& state = fans_[fan];
-        JsonObject item = fans.add<JsonObject>();
-        item["fan"] = fan + 1;
-        item["sensor"] = fan / 2 + 1;
-        item["mode"] = config.fans[fan].automatic ? "auto" : "fixed";
-        item["fixed_duty"] = config.fans[fan].duty;
-        item["target_duty"] = state.requestedDuty;
-        item["applied_duty"] = state.appliedDuty;
-        item["rpm"] = state.rpm;
-        item["pwm_ok"] = state.pwmReady;
-        item["boost"] = state.boosting;
+        result.fans[fan] = {
+            fans_[fan].requestedDuty,
+            fans_[fan].appliedDuty,
+            fans_[fan].rpm,
+            config.fans[fan].duty,
+            config.fans[fan].automatic,
+            fans_[fan].boosting,
+            fans_[fan].pwmReady
+        };
     }
+    return result;
 }
 
 }  // namespace controller

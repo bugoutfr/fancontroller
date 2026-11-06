@@ -1,5 +1,21 @@
 <?xml version="1.0" encoding="utf-8"?>
 <root>
+  <data name="OtaHeading.Text" xml:space="preserve"><value>Mise à jour du firmware par Bluetooth</value></data>
+  <data name="OtaWarning.Text" xml:space="preserve"><value>Sélectionnez un fichier .bin applicatif de confiance, pas une image flash complète. Sauvegardez les paramètres : les changements RAM non sauvegardés seront perdus au redémarrage. SHA-256 vérifie l’intégrité, pas l’auteur. Maintenez le contrôleur alimenté.</value></data>
+  <data name="OtaSelect.Content" xml:space="preserve"><value>Sélectionner un firmware .bin</value></data>
+  <data name="OtaCancel.Content" xml:space="preserve"><value>Annuler la mise à jour</value></data>
+  <data name="Ota.Initial" xml:space="preserve"><value>L’OTA nécessite le firmware 1.2.0 ou ultérieur, installé initialement par USB.</value></data>
+  <data name="Ota.Transferring" xml:space="preserve"><value>Transfert du firmware ; les relevés sont suspendus. Ne coupez pas l’alimentation.</value></data>
+  <data name="Ota.Validated" xml:space="preserve"><value>Firmware validé ; en attente de confirmation de l’activation.</value></data>
+  <data name="Ota.Restarting" xml:space="preserve"><value>Activation demandée ; reconnexion pour vérifier le firmware en cours d’exécution.</value></data>
+  <data name="Ota.Success" xml:space="preserve"><value>Redémarrage terminé : l’image du firmware en cours d’exécution a été vérifiée.</value></data>
+  <data name="Ota.Discarded" xml:space="preserve"><value>Firmware abandonné sans activation ni redémarrage.</value></data>
+  <data name="Ota.Canceled" xml:space="preserve"><value>Mise à jour annulée. Un transfert interrompu n’est jamais rejoué.</value></data>
+  <data name="Ota.Failed" xml:space="preserve"><value>Échec de la mise à jour : le firmware en cours d’exécution n’a pas été vérifié.</value></data>
+  <data name="Ota.ConfirmTitle" xml:space="preserve"><value>Firmware vérifié : redémarrer maintenant ?</value></data>
+  <data name="Ota.ConfirmBody" xml:space="preserve"><value>Le transfert a passé les contrôles d’intégrité et de l’image. Le redémarrage interrompt brièvement la régulation et peut interrompre le refroidissement. Les paramètres RAM non sauvegardés seront perdus. Continuez uniquement si cela ne présente aucun risque.</value></data>
+  <data name="Ota.Activate" xml:space="preserve"><value>Activer et redémarrer</value></data>
+  <data name="Ota.Discard" xml:space="preserve"><value>Abandonner le firmware</value></data>
   <data name="AppTitle" xml:space="preserve"><value>FanController — contrôle BLE local</value></data>
   <data name="ErrorBannerTitle.Text" xml:space="preserve"><value>Opération interrompue</value></data>
   <data name="DashboardTab.Header" xml:space="preserve"><value>Tableau de bord</value></data>
@@ -20,6 +36,12 @@
   <data name="SettingsLanguage.Text" xml:space="preserve"><value>Langue</value></data>
   <data name="SettingsStartup.Content" xml:space="preserve"><value>Lancer au démarrage de Windows</value></data>
   <data name="SettingsStartupNote.Text" xml:space="preserve"><value>À l’ouverture de session, l’application démarre dans la zone de notification et se reconnecte au dernier contrôleur.</value></data>
+  <data name="SettingsNames.Text" xml:space="preserve"><value>Noms des appareils</value></data>
+  <data name="SettingsNamesNote.Text" xml:space="preserve"><value>Les noms facultatifs sont enregistrés uniquement sur ce PC et ne sont jamais envoyés au contrôleur.</value></data>
+  <data name="SettingsProbes.Text" xml:space="preserve"><value>Sondes</value></data>
+  <data name="SettingsFans.Text" xml:space="preserve"><value>Ventilateurs</value></data>
+  <data name="SettingsDeviceName.PlaceholderText" xml:space="preserve"><value>Nom personnalisé (facultatif)</value></data>
+  <data name="SettingsDeviceName.AutomationProperties.Name" xml:space="preserve"><value>Nom personnalisé</value></data>
   <data name="SettingsConnection.Text" xml:space="preserve"><value>Connexion au contrôleur</value></data>
   <data name="SettingsLinkQuality.ToolTipService.ToolTip" xml:space="preserve"><value>Signal reçu par l’ESP32 : plus la valeur en dBm est proche de zéro, plus le signal est fort.</value></data>
   <data name="SettingsScan.Content" xml:space="preserve"><value>Rechercher (15 s)</value></data>
@@ -60,9 +82,13 @@
   <data name="Fan.Title" xml:space="preserve"><value>Ventilateur {0} • sonde {1}</value></data>
   <data name="Fan.Name" xml:space="preserve"><value>Ventilateur {0}</value></data>
   <data name="Profile.Title" xml:space="preserve"><value>Profil de la sonde {0} • ventilateurs {1}</value></data>
+  <data name="Profile.NamedTitle" xml:space="preserve"><value>{0} • ventilateurs {1}</value></data>
   <data name="Plot.PwmLabel" xml:space="preserve"><value>PWM (%) • interpolation linéaire</value></data>
   <data name="History.ProbeSeries" xml:space="preserve"><value>Sonde {0} • °C</value></data>
   <data name="History.FanSeries" xml:space="preserve"><value>Ventilateur {0} • tr/min</value></data>
+  <data name="DeviceNames.Saved" xml:space="preserve"><value>Noms enregistrés uniquement sur ce PC.</value></data>
+  <data name="DeviceNames.LoadError" xml:space="preserve"><value>Impossible de lire les noms locaux : {0}</value></data>
+  <data name="DeviceNames.SaveError" xml:space="preserve"><value>Les noms locaux n’ont pas été enregistrés : {0}</value></data>
   <data name="History.Controller" xml:space="preserve"><value>Contrôleur {0:X12}</value></data>
   <data name="History.InitialMessage" xml:space="preserve"><value>Historique local • conservation 30 jours</value></data>
   <data name="History.ReadError" xml:space="preserve"><value>Lecture de l’historique impossible : {0}</value></data>

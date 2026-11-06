@@ -1,4 +1,5 @@
 using FanController.Core;
+using System.Buffers.Binary;
 using System.Runtime.InteropServices;
 using Windows.Devices.Bluetooth;
 using Windows.Devices.Bluetooth.GenericAttributeProfile;
@@ -8,15 +9,25 @@ using Windows.Devices.Enumeration;
 namespace FanController.App.Bluetooth;
 
 /// <summary>Transport UART BLE Windows à écritures confirmées et notifications chiffrées.</summary>
-public sealed class WindowsBleTransport : IControllerTransport
+public sealed class WindowsBleTransport : IControllerTransport, IFirmwareTransport
 {
     private static readonly Guid RxId = new("6e400002-b5a3-f393-e0a9-e50e24dcca9e");
     private static readonly Guid TxId = new("6e400003-b5a3-f393-e0a9-e50e24dcca9e");
+    private static readonly Guid OtaId = new("6e400004-b5a3-f393-e0a9-e50e24dcca9e");
     private readonly object _sync = new();
     private BluetoothLEDevice? _device;
     private GattDeviceService? _service;
     private GattCharacteristic? _rx, _tx;
+    private GattCharacteristic? _ota;
+    private TaskCompletionSource<uint>? _firmwareAck;
+    private readonly SemaphoreSlim _firmwareGate = new(1, 1);
     private bool _closed, _ready;
+
+    /// <inheritdoc />
+    public bool FirmwareUpdateSupported => _ota is not null;
+
+    /// <inheritdoc />
+    public int FirmwareBlockSize => Math.Clamp((_service?.Session.MaxPduSize ?? 23) - 7, 16, 508);
 
     /// <inheritdoc />
     public string? DeviceName
@@ -67,6 +78,12 @@ public sealed class WindowsBleTransport : IControllerTransport
             var subscription = await tx.WriteClientCharacteristicConfigurationDescriptorWithResultAsync(
                 GattClientCharacteristicConfigurationDescriptorValue.Notify).AsTask(cancellationToken);
             Check(subscription.Status, "Subscribing to TX notifications", subscription.ProtocolError);
+            if (_ota is { } ota)
+            {
+                var otaSubscription = await ota.WriteClientCharacteristicConfigurationDescriptorWithResultAsync(
+                    GattClientCharacteristicConfigurationDescriptorValue.Notify).AsTask(cancellationToken);
+                Check(otaSubscription.Status, "Subscribing to OTA acknowledgments", otaSubscription.ProtocolError);
+            }
             lock (_sync)
             {
                 if (_closed || device.ConnectionStatus != BluetoothConnectionStatus.Connected)
@@ -180,13 +197,24 @@ public sealed class WindowsBleTransport : IControllerTransport
 
         rx.ProtectionLevel = GattProtectionLevel.EncryptionRequired;
         tx.ProtectionLevel = GattProtectionLevel.EncryptionRequired;
+        var ota = chars.Characteristics.SingleOrDefault(c => c.Uuid == OtaId);
+        if (ota is not null)
+        {
+            if (!ota.CharacteristicProperties.HasFlag(GattCharacteristicProperties.Write) ||
+                !ota.CharacteristicProperties.HasFlag(GattCharacteristicProperties.Notify))
+                throw new IOException("OTA WriteWithResponse/Notify properties are missing.");
+            ota.ProtectionLevel = GattProtectionLevel.EncryptionRequired;
+        }
         lock (_sync)
         {
             if (_closed)
                 throw new IOException("Connection was cancelled.");
             _rx = rx;
             _tx = tx;
+            _ota = ota;
             tx.ValueChanged += ValueChanged;
+            if (ota is not null)
+                ota.ValueChanged += FirmwareValueChanged;
         }
 
         return tx;
@@ -226,6 +254,82 @@ public sealed class WindowsBleTransport : IControllerTransport
         {
             Fail(ex);
         }
+    }
+
+    /// <inheritdoc />
+    public async Task<uint> WriteFirmwareBlockAsync(uint offset, ReadOnlyMemory<byte> bytes, CancellationToken ct)
+    {
+        if (bytes.Length < 1 || bytes.Length > FirmwareBlockSize)
+            throw new ArgumentOutOfRangeException(nameof(bytes));
+        await _firmwareGate.WaitAsync(ct);
+        try
+        {
+            GattCharacteristic ota;
+            TaskCompletionSource<uint> pending;
+            lock (_sync)
+            {
+                if (_closed || !_ready || _ota is null)
+                    throw new IOException("The connected firmware does not support Bluetooth OTA.");
+                ota = _ota;
+                pending = new(TaskCreationOptions.RunContinuationsAsynchronously);
+                _firmwareAck = pending;
+            }
+            _ = pending.Task.ContinueWith(t => { _ = t.Exception; },
+                TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously);
+            using var deadline = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            deadline.CancelAfter(TimeSpan.FromSeconds(20));
+            try
+            {
+                var packet = new byte[bytes.Length + 4];
+                BinaryPrimitives.WriteUInt32LittleEndian(packet, offset);
+                bytes.CopyTo(packet.AsMemory(4));
+                using var writer = new DataWriter();
+                writer.WriteBytes(packet);
+                var writeOption = ota.CharacteristicProperties.HasFlag(GattCharacteristicProperties.WriteWithoutResponse)
+                    ? GattWriteOption.WriteWithoutResponse : GattWriteOption.WriteWithResponse;
+                var result = await ota.WriteValueWithResultAsync(writer.DetachBuffer(),
+                    writeOption).AsTask(deadline.Token);
+                Check(result.Status, "Writing OTA block", result.ProtocolError);
+                var accepted = await pending.Task.WaitAsync(deadline.Token);
+                if (accepted != offset + bytes.Length)
+                    throw new InvalidDataException("OTA acknowledgment offset does not match the written block.");
+                return accepted;
+            }
+            catch (Exception ex)
+            {
+                var error = ex is OperationCanceledException && !ct.IsCancellationRequested
+                    ? new TimeoutException("OTA acknowledgment timed out; the transfer will not be replayed.", ex) : ex;
+                Fail(error);
+                throw error;
+            }
+            finally
+            {
+                lock (_sync)
+                    _firmwareAck = null;
+            }
+        }
+        finally { _firmwareGate.Release(); }
+    }
+
+    private void FirmwareValueChanged(GattCharacteristic sender, GattValueChangedEventArgs args)
+    {
+        try
+        {
+            using var reader = DataReader.FromBuffer(args.CharacteristicValue);
+            var bytes = new byte[reader.UnconsumedBufferLength];
+            reader.ReadBytes(bytes);
+            lock (_sync)
+            {
+                if (_closed)
+                    return;
+                if (bytes.Length != 5 || _firmwareAck is null || _firmwareAck.Task.IsCompleted)
+                    throw new InvalidDataException("Unexpected OTA acknowledgment.");
+                if (bytes[0] != 0)
+                    throw new IOException($"ESP32 rejected OTA block (status {bytes[0]}).");
+                _firmwareAck.TrySetResult(BinaryPrimitives.ReadUInt32LittleEndian(bytes.AsSpan(1)));
+            }
+        }
+        catch (Exception ex) { Fail(ex); }
     }
 
     private void StatusChanged(BluetoothLEDevice sender, object args)
@@ -274,6 +378,10 @@ public sealed class WindowsBleTransport : IControllerTransport
                 _tx.ValueChanged -= ValueChanged;
             if (_device is not null)
                 _device.ConnectionStatusChanged -= StatusChanged;
+            if (_ota is not null)
+                _ota.ValueChanged -= FirmwareValueChanged;
+            _firmwareAck?.TrySetException(new IOException("BLE disconnected during OTA."));
+            _ota = null;
             _rx = _tx = null;
             _service?.Dispose();
             _service = null;

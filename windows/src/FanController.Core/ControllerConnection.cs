@@ -85,6 +85,10 @@ public sealed class ControllerConnection(
     private Task? _shutdown;
     private ulong? _lastDevice;
     private bool _started, _disposed;
+    private (ulong Address, string Hash)? _expectedFirmware;
+
+    /// <summary>Whether the active transport exposes the optional encrypted OTA channel.</summary>
+    public bool FirmwareUpdateSupported => _current?.Transport is IFirmwareTransport { FirmwareUpdateSupported: true };
 
     /// <summary>Reports connection transitions. Subscribers must marshal presentation updates to the UI.</summary>
     public event Action<ConnectionUpdate>? Changed;
@@ -100,6 +104,9 @@ public sealed class ControllerConnection(
 
     /// <summary>Reports failure to read or save the remembered controller address.</summary>
     public event Action<Exception>? PreferenceFailed;
+
+    /// <summary>Reports a pending OTA image verified on the actual running partition after reconnection.</summary>
+    public event Action<ulong>? FirmwareVerified;
 
     /// <summary>Gets whether explicit disconnect or scanning has paused reconnection.</summary>
     public bool ReconnectionPaused => _reconnect.Paused;
@@ -171,6 +178,67 @@ public sealed class ControllerConnection(
     public Task<(RemoteConfiguration Config, Telemetry Status)> DefaultsAsync() =>
         RunAsync((controller, ct) => controller.DefaultsAsync(ct));
 
+    /// <summary>Uploads local firmware, asks before activation and reconnects to verify the actual running image.</summary>
+    /// <param name="path">Local application .bin file.</param>
+    /// <param name="progress">Acknowledged transfer percentage.</param>
+    /// <param name="confirmActivation">Confirmation after staging; must honor cancellation during shutdown.</param>
+    /// <param name="ct">Cancels loading, transfer, confirmation or reconnection.</param>
+    /// <returns>True when the new running image was verified; false when activation was declined.</returns>
+    public async Task<bool> UpdateFirmwareAsync(string path, IProgress<double>? progress,
+        Func<CancellationToken, Task<bool>> confirmActivation, CancellationToken ct = default)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        using var lifetime = CancellationTokenSource.CreateLinkedTokenSource(ct, _lifetime.Token);
+        var image = await FirmwareImage.LoadAsync(path, lifetime.Token).ConfigureAwait(false);
+        await _gate.WaitAsync(lifetime.Token).ConfigureAwait(false);
+        try
+        {
+            var connection = _current ?? throw new IOException("No controller is connected.");
+            if (connection.Transport is not IFirmwareTransport { FirmwareUpdateSupported: true } ota)
+                throw new IOException("Install OTA-capable firmware over USB first (1.2.0 or later).");
+            using var transfer = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token, connection.Lifetime.Token);
+            var activated = await connection.Controller.UpdateFirmwareAsync(ota, image, progress,
+                confirmActivation, transfer.Token).ConfigureAwait(false);
+            if (!activated)
+                return false;
+            _expectedFirmware = (connection.Address, image.ImageSha256);
+            await CloseCoreAsync().ConfigureAwait(false);
+            await ReconnectFirmwareAsync(connection.Address, lifetime.Token).ConfigureAwait(false);
+            return true;
+        }
+        finally { _gate.Release(); }
+    }
+
+    private async Task ReconnectFirmwareAsync(ulong address, CancellationToken ct)
+    {
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        deadline.CancelAfter(TimeSpan.FromSeconds(90));
+        Exception? lastError = null;
+        try
+        {
+            while (true)
+            {
+                await Task.Delay(TimeSpan.FromSeconds(2), deadline.Token).ConfigureAwait(false);
+                try
+                {
+                    await ConnectCoreAsync(address, automatic: true, deadline.Token).ConfigureAwait(false);
+                    return;
+                }
+                catch (Exception ex) when (!deadline.IsCancellationRequested &&
+                    (ex is IOException || ex is OperationCanceledException))
+                {
+                    lastError = ex;
+                    Changed?.Invoke(new(ConnectionStage.Retrying, address, Automatic: true,
+                        Error: ex, RetryDelay: TimeSpan.FromSeconds(2)));
+                }
+            }
+        }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested && deadline.IsCancellationRequested)
+        {
+            throw new IOException("Firmware activation was acknowledged, but the running image could not be verified within 90 seconds. Reconnect to complete verification.", lastError);
+        }
+    }
+
     private async Task<(RemoteConfiguration Config, Telemetry Status)> RunAsync(
         Func<ControllerService, CancellationToken, Task<(RemoteConfiguration Config, Telemetry Status)>> action)
     {
@@ -186,12 +254,12 @@ public sealed class ControllerConnection(
         finally { _gate.Release(); }
     }
 
-    private async Task ConnectCoreAsync(ulong address, bool automatic)
+    private async Task ConnectCoreAsync(ulong address, bool automatic, CancellationToken ct = default)
     {
         await CloseCoreAsync().ConfigureAwait(false);
         ObjectDisposedException.ThrowIf(_disposed, this);
         var connection = new ActiveConnection(
-            transportFactory(), CancellationTokenSource.CreateLinkedTokenSource(_lifetime.Token), address);
+            transportFactory(), CancellationTokenSource.CreateLinkedTokenSource(_lifetime.Token, ct), address);
         lock (_sync)
             _current = connection;
         connection.Session.Invalidated += error => OnInvalidated(connection, error);
@@ -205,12 +273,21 @@ public sealed class ControllerConnection(
 
             Changed?.Invoke(new(ConnectionStage.Reading, address, connection.Transport.DeviceName, automatic));
             var state = await connection.Controller.SynchronizeAsync(connection.Lifetime.Token).ConfigureAwait(false);
+            var firmwareVerified = false;
+            if (_expectedFirmware is { } expected && expected.Address == address)
+            {
+                await connection.Controller.VerifyFirmwareAsync(expected.Hash, connection.Lifetime.Token).ConfigureAwait(false);
+                _expectedFirmware = null;
+                firmwareVerified = true;
+            }
             await RecordAsync(connection, state.Status).ConfigureAwait(false);
             connection.Lifetime.Token.ThrowIfCancellationRequested();
             _lastDevice = address;
             _reconnect.Succeeded();
 
             Changed?.Invoke(new(ConnectionStage.Connected, address, connection.Transport.DeviceName, automatic, state));
+            if (firmwareVerified)
+                FirmwareVerified?.Invoke(address);
             try
             {
                 preferences.Save(address);

@@ -37,6 +37,7 @@ public sealed class HistoryViewModel : ObservableObject, IAsyncDisposable
     private string? _readError;
     private IReadOnlyList<HistorySample> _lastSamples = [];
     private IReadOnlyList<PlotSeries> _temperatures = [], _rpm = [];
+    private string[] _sensorNames = ["", ""], _fanNames = ["", "", "", ""];
     /// <summary>The controllers available for selection.</summary>
     public ObservableCollection<HistoryDevice> Devices { get; } = [];
 
@@ -223,6 +224,14 @@ public sealed class HistoryViewModel : ObservableObject, IAsyncDisposable
         RefreshMessage();
     }
 
+    /// <summary>Refreshes chart labels using the desktop client's optional local names.</summary>
+    public void SetDeviceNames(IReadOnlyList<string> sensorNames, IReadOnlyList<string> fanNames)
+    {
+        _sensorNames = sensorNames.ToArray();
+        _fanNames = fanNames.ToArray();
+        RebuildSeries();
+    }
+
     private void RefreshMessage()
     {
         Message = _writeError is not null
@@ -257,13 +266,19 @@ public sealed class HistoryViewModel : ObservableObject, IAsyncDisposable
                 $"{sample.SessionId}:{sample.Segment}")).ToArray();
             return new(name, color, points);
         }
+        string DeviceName(string[] names, int index, string key, string fallback)
+        {
+            var customName = names[index];
+            return string.IsNullOrWhiteSpace(customName)
+                ? Localizer.Format(key, fallback, index + 1) : customName.Trim();
+        }
         Temperatures = [
-            Series(0, Localizer.Format("History.ProbeSeries", "Probe {0} • °C", 1), "#5DD9C1"),
-            Series(1, Localizer.Format("History.ProbeSeries", "Probe {0} • °C", 2), "#FFB86B")];
+            Series(0, $"{DeviceName(_sensorNames, 0, "History.ProbeSeries", "Probe {0}")} • °C", "#5DD9C1"),
+            Series(1, $"{DeviceName(_sensorNames, 1, "History.ProbeSeries", "Probe {0}")} • °C", "#FFB86B")];
         Rpm = [
-            Series(2, Localizer.Format("History.FanSeries", "Fan {0} • RPM", 1), "#5DD9C1"),
-            Series(3, Localizer.Format("History.FanSeries", "Fan {0} • RPM", 2), "#78A9FF"),
-            Series(4, Localizer.Format("History.FanSeries", "Fan {0} • RPM", 3), "#FFB86B"),
-            Series(5, Localizer.Format("History.FanSeries", "Fan {0} • RPM", 4), "#D99CFF")];
+            Series(2, $"{DeviceName(_fanNames, 0, "History.FanSeries", "Fan {0}")} • RPM", "#5DD9C1"),
+            Series(3, $"{DeviceName(_fanNames, 1, "History.FanSeries", "Fan {0}")} • RPM", "#78A9FF"),
+            Series(4, $"{DeviceName(_fanNames, 2, "History.FanSeries", "Fan {0}")} • RPM", "#FFB86B"),
+            Series(5, $"{DeviceName(_fanNames, 3, "History.FanSeries", "Fan {0}")} • RPM", "#D99CFF")];
     }
 }

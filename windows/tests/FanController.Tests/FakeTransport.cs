@@ -6,8 +6,24 @@ using FanController.Core;
 namespace FanController.Tests;
 
 /// <summary>Exclusivement lié au projet de tests ; aucune référence depuis l'application.</summary>
-internal sealed class FakeTransport : IControllerTransport
+internal sealed class FakeTransport : IControllerTransport, IFirmwareTransport
 {
+    public bool FirmwareUpdateSupported
+    {
+        get; set;
+    }
+    public int FirmwareBlockSize { get; set; } = 128;
+    public List<(uint Offset, byte[] Bytes)> FirmwareWrites { get; } = [];
+    public Func<uint, ReadOnlyMemory<byte>, CancellationToken, Task<uint>>? OnFirmwareWrite
+    {
+        get; set;
+    }
+    public Task<uint> WriteFirmwareBlockAsync(uint offset, ReadOnlyMemory<byte> bytes, CancellationToken ct)
+    {
+        ct.ThrowIfCancellationRequested();
+        FirmwareWrites.Add((offset, bytes.ToArray()));
+        return OnFirmwareWrite?.Invoke(offset, bytes, ct) ?? Task.FromResult(offset + (uint)bytes.Length);
+    }
     private readonly List<byte> _input = [];
     public event Action<byte[]>? BytesReceived;
     public event Action<Exception>? Disconnected;

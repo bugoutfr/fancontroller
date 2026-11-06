@@ -4,6 +4,7 @@
 #include <future>
 #include "PairingSecurity.h"
 #include "PairingSession.h"
+#include "HardwareConfig.h"
 #include <nimble/nimble/host/include/host/ble_hs.h>
 
 using namespace controller;
@@ -17,7 +18,7 @@ void gesture(PairingSecurity& security, uint32_t start, uint32_t duration) {
     fake::now += 60;
     security.update(fake::now);
     fake::buttonLevel = HIGH;
-    fake::now += duration;
+    fake::now = start + duration;
     security.update(fake::now);
     fake::now += 60;
     security.update(fake::now);
@@ -32,6 +33,19 @@ void testButton() {
     assert(window.update(true, 21060) == ButtonAction::None);
     assert(window.update(false, 23100) == ButtonAction::None);
     assert(window.update(false, 23160) == ButtonAction::Enroll);
+    for (const uint32_t start : {uint32_t(30000), std::numeric_limits<uint32_t>::max() - 1000}) {
+        for (const uint32_t duration : {1999u, 2000u, 4999u, 5000u, 15000u}) {
+            PairingWindow threshold;
+            assert(threshold.update(false, start - 100) == ButtonAction::None);
+            assert(threshold.update(true, start) == ButtonAction::None);
+            assert(threshold.update(true, start + 60) == ButtonAction::None);
+            assert(threshold.update(false, start + duration) == ButtonAction::None);
+            const auto expected = duration >= 5000 ? ButtonAction::Revoke
+                : duration >= 2000 ? ButtonAction::Enroll : ButtonAction::None;
+            assert(threshold.update(false, start + duration + 60) == expected);
+            assert(threshold.update(false, start + duration + 120) == ButtonAction::None);
+        }
+    }
     const uint32_t nearWrap = std::numeric_limits<uint32_t>::max() - 1000;
     window.open(nearWrap);
     assert(window.isOpen(nearWrap + 59999));
@@ -45,7 +59,7 @@ void testAuthorizationAndRevocation() {
     fake::now = 0;
     fake::buttonLevel = HIGH;
     PairingSecurity security;
-    security.begin();
+    assert(security.begin());
     assert(NimBLEDevice::bonding && NimBLEDevice::sc && !NimBLEDevice::mitm);
     assert(ble_hs_cfg.sm_sc_only == 0);
     ble_store_status_event full{BLE_STORE_EVENT_FULL}, overflow{BLE_STORE_EVENT_OVERFLOW};
@@ -68,38 +82,86 @@ void testAuthorizationAndRevocation() {
     info.keySize = 16;
     assert(security.authorize(info));
     assert(!security.enrollmentOpen());
+    assert(fake::levels[hardware::PairingLedPin] == LOW);
+    security.setConnected(true);
+    assert(fake::levels[hardware::PairingLedPin] == HIGH);
+    security.update(fake::now + 250);
+    assert(fake::levels[hardware::PairingLedPin] == HIGH);
+    security.setConnected(false);
+    assert(fake::levels[hardware::PairingLedPin] == LOW);
     assert(security.canConnect(info));
     NimBLEConnInfo stranger;
     stranger.address = NimBLEAddress("aa:bb:cc:dd:ee:ff");
     assert(!security.canConnect(stranger));
     assert(!security.authorize(stranger));
     PairingSecurity rebooted;
-    rebooted.begin();
+    assert(rebooted.begin());
     assert(rebooted.canConnect(info));
     assert(rebooted.authorize(info));
+    rebooted.setConnected(true);
+    assert(fake::levels[hardware::PairingLedPin] == HIGH);
     rebooted.update(fake::now);
     gesture(rebooted, 10000, 2100);
     assert(!rebooted.enrollmentOpen());
     assert(rebooted.resumeAdvertising());
     assert(NimBLEDevice::advertising);
-    gesture(rebooted, 15000, 10100);
+    gesture(rebooted, 15000, 5000);
     assert(!NimBLEDevice::advertising);
     assert(NimBLEDevice::getNumBonds() == 0);
-    assert(!rebooted.canConnect(info));
+    assert(rebooted.enrollmentOpen());
+    assert(rebooted.canConnect(stranger));
     assert(!fake::nvs.count("identity"));
+    assert(fake::levels[hardware::PairingLedPin] == HIGH);
+    const uint32_t revokedAt = fake::now;
+    for (const uint32_t elapsed : {100u, 200u, 300u, 400u}) {
+        fake::now = revokedAt + elapsed;
+        rebooted.update(fake::now);
+        const bool on = elapsed == 200 || (elapsed == 400 && (fake::now / 250) % 2 == 0);
+        assert(fake::levels[hardware::PairingLedPin] == (on ? HIGH : LOW));
+    }
     assert(rebooted.resumeAdvertising());
     assert(NimBLEDevice::advertising);
-    NimBLEDevice::stopAdvertising();
-    gesture(rebooted, 30000, 2100);
+    fake::now = revokedAt + 59999;
     assert(rebooted.enrollmentOpen());
+    fake::now = revokedAt + 60000;
+    rebooted.update(fake::now);
+    assert(!rebooted.enrollmentOpen());
+    assert(fake::levels[hardware::PairingLedPin] == LOW);
+    rebooted.setConnected(true);
+    assert(fake::levels[hardware::PairingLedPin] == HIGH);
+    rebooted.setConnected(false);
+    assert(fake::levels[hardware::PairingLedPin] == LOW);
+    NimBLEDevice::stopAdvertising();
+    gesture(rebooted, 90000, 2100);
+    assert(rebooted.enrollmentOpen());
+    fake::now = 92500;
+    rebooted.setConnected(true);
+    rebooted.update(fake::now);
+    assert(fake::levels[hardware::PairingLedPin] == HIGH);
+    fake::now = 92750;
+    rebooted.update(fake::now);
+    assert(fake::levels[hardware::PairingLedPin] == LOW);
+    rebooted.setConnected(false);
     fake::now += 60000;
     assert(!rebooted.canConnect(info));
     const int deletions = NimBLEDevice::deletions;
     assert(!rebooted.authorize(info));
     assert(NimBLEDevice::deletions == deletions + 1);
+    gesture(rebooted, 160000, 2100);
+    NimBLEDevice::hasBond = true;
+    assert(rebooted.authorize(stranger));
+    assert(!rebooted.enrollmentOpen());
+    assert(fake::levels[hardware::PairingLedPin] == LOW);
+    assert(fake::nvs.at("identity") == String("aa:bb:cc:dd:ee:ff/0"));
+    assert(!rebooted.canConnect(info));
 }
 
 void testRevocationErrors() {
+    fake::storageAvailable = false;
+    PairingSecurity unavailable;
+    assert(!unavailable.begin());
+    fake::storageAvailable = true;
+
     for (int failure = 0; failure < 4; ++failure) {
         fake::nvs["identity"] = String("11:22:33:44:55:66/0");
         fake::now = 0;
@@ -110,10 +172,12 @@ void testRevocationErrors() {
         NimBLEDevice::preserveBondOnDelete = failure == 2;
         fake::storageRemoveOk = failure != 3;
         PairingSecurity security;
-        security.begin();
+        assert(security.begin());
         security.update(0);
         assert(security.resumeAdvertising());
         gesture(security, 100, 10100);
+        assert(!security.enrollmentOpen());
+        assert(fake::levels[hardware::PairingLedPin] == LOW);
         assert(!security.canConnect(NimBLEConnInfo()));
         assert(!security.resumeAdvertising());
         assert(fake::nvs.count("identity"));

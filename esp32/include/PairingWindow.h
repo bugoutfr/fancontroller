@@ -28,7 +28,7 @@ public:
             return ButtonAction::None;
         }
         const uint32_t duration = now - pressedAt_;
-        if (duration >= 10000) {
+        if (duration >= 5000) {
             return ButtonAction::Revoke;
         }
         return duration >= 2000 ? ButtonAction::Enroll : ButtonAction::None;

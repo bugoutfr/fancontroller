@@ -55,7 +55,8 @@ public sealed class ViewModelTests : IDisposable
             new ControllerConnection(transports, (_, _) => Task.FromResult(true),
                 new(Path.Combine(_directory, "last-device.txt")), store),
             new(dispatcher, store, errors.Add), dispatcher,
-            startup ?? new(), scanners ?? (() => new Scanner()), errors.Add);
+            startup ?? new(), scanners ?? (() => new Scanner()), errors.Add,
+            new(Path.Combine(_directory, "device-names.json")));
     }
 
     [Fact]
@@ -144,6 +145,128 @@ public sealed class ViewModelTests : IDisposable
         Assert.False(settings.Value);
         Assert.Contains("Startup setting unavailable", model.Error);
         Assert.Single(errors);
+    }
+
+    [Fact]
+    public async Task InvalidLocalFirmwareIsReportedWithoutInterruptingConnectionOrLosingDraft()
+    {
+        var transport = new FakeTransport { FirmwareUpdateSupported = true };
+        var errors = new List<Exception>();
+        await using var model = Create(() => transport, new(), errors);
+        model.SelectedDevice = new(new(42, "Test", -50));
+        var connecting = model.ConnectCommand.ExecuteAsync();
+        await ControllerTestData.SynchronizeAsync(transport);
+        await connecting;
+        model.Profiles[0].Points[0].Duty = "35";
+        var path = Path.Combine(_directory, "invalid.bin");
+        await File.WriteAllBytesAsync(path, new byte[320]);
+        Assert.True(model.CanUpdateFirmware);
+        Assert.False(await model.UpdateFirmwareAsync(path, _ => Task.FromResult(true)));
+        Assert.True(model.Connected);
+        Assert.False(model.FirmwareUpdating);
+        Assert.True(model.CanEdit);
+        Assert.Equal("35", model.Profiles[0].Points[0].Duty);
+        Assert.True(model.HasError);
+        Assert.Single(errors);
+        Assert.Equal(new[] { "get_config", "get_status" }, transport.Names);
+    }
+
+    [Fact]
+    public async Task LaterVerifiedConnectionReplacesFailedFirmwareMessage()
+    {
+        var first = new FakeTransport { FirmwareUpdateSupported = true };
+        var mismatched = new FakeTransport { FirmwareUpdateSupported = true };
+        var recovered = new FakeTransport { FirmwareUpdateSupported = true };
+        var transports = new Queue<FakeTransport>([first, mismatched, recovered]);
+        var errors = new List<Exception>();
+        await using var model = Create(() => transports.Dequeue(), new(), errors);
+        model.SelectedDevice = new(new(42, "Test", -50));
+        var connecting = model.ConnectCommand.ExecuteAsync();
+        await ControllerTestData.SynchronizeAsync(first);
+        await connecting;
+        var path = Path.Combine(_directory, "recovery.bin");
+        await File.WriteAllBytesAsync(path, FirmwareTests.ImageBytes());
+        var image = await FirmwareImage.LoadAsync(path);
+        var update = model.UpdateFirmwareAsync(path, _ => Task.FromResult(true));
+        await FirmwareTests.BeginAsync(first, image);
+        await FirmwareTests.ReplyAsync(first, "ota_finish", new
+        {
+            size = image.Bytes.Length,
+            sha256 = image.FileSha256
+        });
+        await FirmwareTests.ReplyAsync(first, "ota_activate", new
+        {
+        });
+        await ControllerTestData.SynchronizeAsync(mismatched);
+        await FirmwareTests.ReplyAsync(mismatched, "ota_info", new
+        {
+            running_image_sha256 = image.FileSha256
+        });
+        Assert.False(await update);
+        var failureMessage = model.FirmwareMessage;
+        Assert.NotEmpty(errors);
+        Assert.All(errors, error => Assert.IsType<InvalidDataException>(error));
+
+        connecting = model.ConnectCommand.ExecuteAsync();
+        await ControllerTestData.SynchronizeAsync(recovered);
+        await FirmwareTests.ReplyAsync(recovered, "ota_info", new
+        {
+            running_image_sha256 = image.ImageSha256
+        });
+        await connecting;
+        Assert.True(model.Connected);
+        Assert.NotEqual(failureMessage, model.FirmwareMessage);
+        Assert.False(model.HasError);
+        Assert.Empty(recovered.FirmwareWrites);
+        Assert.Single(first.Names, name => name == "ota_activate");
+    }
+
+    [Fact]
+    public async Task ShutdownAwaitsFirmwareAndDisposesHistoryOnlyAfterTransport()
+    {
+        var transport = new FakeTransport { FirmwareUpdateSupported = true };
+        var errors = new List<Exception>();
+        var history = new TestHistoryStore();
+        await using var model = Create(() => transport, history, errors);
+        model.SelectedDevice = new(new(42, "Test", -50));
+        var connecting = model.ConnectCommand.ExecuteAsync();
+        await ControllerTestData.SynchronizeAsync(transport);
+        await connecting;
+        var path = Path.Combine(_directory, "firmware.bin");
+        await File.WriteAllBytesAsync(path, FirmwareTests.ImageBytes());
+        var update = model.UpdateFirmwareAsync(path, _ => Task.FromResult(true));
+        Assert.Equal("ota_info", (await transport.NextAsync()).GetProperty("cmd").GetString());
+        Assert.True(model.FirmwareUpdating);
+        Assert.False(model.CanEdit);
+        Assert.False(model.SaveCommand.CanExecute(null));
+        Assert.False(model.ScanCommand.CanExecute(null));
+        await model.DisposeAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.False(await update);
+        Assert.True(transport.Disposed);
+        Assert.True(history.Disposed);
+        Assert.Empty(errors);
+        Assert.DoesNotContain("ota_activate", transport.Names);
+    }
+
+    [Fact]
+    public async Task CustomDeviceNamesPersistLocallyAndUpdateDashboardAndHistory()
+    {
+        var errors = new List<Exception>();
+        await using var model = Create(() => new FakeTransport(), new(), errors);
+        var sensor = model.Sensors[0];
+        var fan = model.FanReadings[2];
+        sensor.CustomName = "CPU";
+        fan.CustomName = "Rear";
+
+        Assert.Equal("CPU", sensor.Title);
+        Assert.Equal("Rear", fan.Title);
+        Assert.Equal("CPU • °C", model.History.Temperatures[0].Name);
+        Assert.Equal("Rear • RPM", model.History.Rpm[2].Name);
+
+        var saved = new DeviceNamePreferences(Path.Combine(_directory, "device-names.json")).Load();
+        Assert.Equal("CPU", saved.Sensors[0]);
+        Assert.Equal("Rear", saved.Fans[2]);
+        Assert.Empty(errors);
     }
 
     [Fact]

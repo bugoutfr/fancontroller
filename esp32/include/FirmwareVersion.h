@@ -2,6 +2,6 @@
 
 namespace controller {
 
-constexpr char FirmwareVersion[] = "1.1.3";
+constexpr char FirmwareVersion[] = "1.4.0";
 
 }

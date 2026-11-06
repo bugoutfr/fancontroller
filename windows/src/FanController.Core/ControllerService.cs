@@ -136,6 +136,77 @@ public sealed class ControllerService(ProtocolSession session) : IDisposable
             return (await ReadConfig(ct), await ReadStatus(ct));
         }, ct);
 
+    /// <summary>Transfers and validates an image exclusively with respect to polling and setting changes.</summary>
+    /// <param name="transport">The connected binary OTA channel.</param>
+    /// <param name="image">Locally validated image.</param>
+    /// <param name="progress">Receives the percentage of bytes acknowledged in flash.</param>
+    /// <param name="confirmActivation">Called after validation; false discards the image without restarting.</param>
+    /// <param name="ct">Cancels the transfer or confirmation; ambiguous writes invalidate the connection.</param>
+    /// <returns>True only when activation was acknowledged; restart verification remains the owner's responsibility.</returns>
+    public Task<bool> UpdateFirmwareAsync(IFirmwareTransport transport, FirmwareImage image,
+            IProgress<double>? progress, Func<CancellationToken, Task<bool>> confirmActivation, CancellationToken ct) =>
+            Run(async () =>
+            {
+                var info = (await session.RequestAsync(new
+                {
+                    cmd = "ota_info"
+                }, ct)).GetProperty("data");
+                if (info.GetProperty("protocol").GetInt32() != 1 ||
+                    image.Bytes.Length > info.GetProperty("max_size").GetInt32())
+                    throw new InvalidDataException("The firmware is incompatible with the controller's OTA partition or protocol.");
+                var begin = await session.RequestAsync(new
+                {
+                    cmd = "ota_begin",
+                    size = image.Bytes.Length,
+                    sha256 = image.FileSha256
+                }, ct);
+                if (begin.GetProperty("data").GetProperty("offset").GetUInt32() != 0)
+                    throw new InvalidDataException("OTA transfer did not start at offset zero.");
+                uint offset = 0;
+                progress?.Report(0);
+                while (offset < image.Bytes.Length)
+                {
+                    var count = Math.Min(transport.FirmwareBlockSize, image.Bytes.Length - (int)offset);
+                    var accepted = await transport.WriteFirmwareBlockAsync(offset,
+                        image.Bytes.Slice((int)offset, count), ct);
+                    if (accepted != offset + count)
+                        throw new InvalidDataException("OTA acknowledgment offset is invalid.");
+                    offset = accepted;
+                    progress?.Report(100.0 * offset / image.Bytes.Length);
+                }
+                var finish = (await session.RequestAsync(new
+                {
+                    cmd = "ota_finish"
+                }, ct)).GetProperty("data");
+                if (finish.GetProperty("size").GetInt32() != image.Bytes.Length ||
+                    !string.Equals(finish.GetProperty("sha256").GetString(), image.FileSha256, StringComparison.OrdinalIgnoreCase))
+                    throw new InvalidDataException("The staged firmware digest or size differs from the selected file.");
+                var activate = await confirmActivation(ct);
+                ct.ThrowIfCancellationRequested();
+                await session.RequestAsync(new
+                {
+                    cmd = activate ? "ota_activate" : "ota_abort"
+                }, ct);
+                return activate;
+            }, ct);
+
+    /// <summary>Verifies the running partition's embedded image digest, not merely a reported version string.</summary>
+    /// <param name="expectedImageSha256">Expected ESP image digest.</param>
+    /// <param name="ct">Cancels the verification.</param>
+    /// <returns>A task completed after a matching OTA info response.</returns>
+    public Task VerifyFirmwareAsync(string expectedImageSha256, CancellationToken ct) =>
+            Run(async () =>
+            {
+                var info = (await session.RequestAsync(new
+                {
+                    cmd = "ota_info"
+                }, ct)).GetProperty("data");
+                if (!string.Equals(info.GetProperty("running_image_sha256").GetString(),
+                    expectedImageSha256, StringComparison.OrdinalIgnoreCase))
+                    throw new InvalidDataException("The running firmware does not match the transferred image.");
+                return true;
+            }, ct);
+
     /// <inheritdoc />
     public void Dispose() => _operationGate.Dispose();
 }

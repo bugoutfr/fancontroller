@@ -1,5 +1,21 @@
 <?xml version="1.0" encoding="utf-8"?>
 <root>
+  <data name="OtaHeading.Text" xml:space="preserve"><value>Firmware update over Bluetooth</value></data>
+  <data name="OtaWarning.Text" xml:space="preserve"><value>Select a trusted application .bin file, not a merged flash image. Save settings first: unsaved RAM changes will be lost on restart. SHA-256 checks integrity, not the publisher. Keep the controller powered.</value></data>
+  <data name="OtaSelect.Content" xml:space="preserve"><value>Select firmware .bin</value></data>
+  <data name="OtaCancel.Content" xml:space="preserve"><value>Cancel update</value></data>
+  <data name="Ota.Initial" xml:space="preserve"><value>OTA requires firmware 1.2.0 or later, initially installed over USB.</value></data>
+  <data name="Ota.Transferring" xml:space="preserve"><value>Transferring firmware; polling is suspended. Do not remove power.</value></data>
+  <data name="Ota.Validated" xml:space="preserve"><value>Firmware validated; waiting for activation confirmation.</value></data>
+  <data name="Ota.Restarting" xml:space="preserve"><value>Activation requested; reconnecting to verify the running firmware.</value></data>
+  <data name="Ota.Success" xml:space="preserve"><value>Restart complete: the running firmware image was verified.</value></data>
+  <data name="Ota.Discarded" xml:space="preserve"><value>Firmware discarded without activation or restart.</value></data>
+  <data name="Ota.Canceled" xml:space="preserve"><value>Update canceled. An interrupted transfer is never replayed.</value></data>
+  <data name="Ota.Failed" xml:space="preserve"><value>Update failed: the running image has not been verified.</value></data>
+  <data name="Ota.ConfirmTitle" xml:space="preserve"><value>Firmware verified: restart now?</value></data>
+  <data name="Ota.ConfirmBody" xml:space="preserve"><value>The transfer passed integrity and image checks. Restarting briefly interrupts regulation and may interrupt cooling. Unsaved RAM settings will be lost. Only proceed when it is safe.</value></data>
+  <data name="Ota.Activate" xml:space="preserve"><value>Activate and restart</value></data>
+  <data name="Ota.Discard" xml:space="preserve"><value>Discard firmware</value></data>
   <data name="AppTitle" xml:space="preserve"><value>FanController — Local BLE control</value></data>
   <data name="ErrorBannerTitle.Text" xml:space="preserve"><value>Operation interrupted</value></data>
   <data name="DashboardTab.Header" xml:space="preserve"><value>Dashboard</value></data>
@@ -20,6 +36,12 @@
   <data name="SettingsLanguage.Text" xml:space="preserve"><value>Language</value></data>
   <data name="SettingsStartup.Content" xml:space="preserve"><value>Launch when Windows starts</value></data>
   <data name="SettingsStartupNote.Text" xml:space="preserve"><value>At sign-in, the app starts in the system tray and reconnects to the last controller.</value></data>
+  <data name="SettingsNames.Text" xml:space="preserve"><value>Device names</value></data>
+  <data name="SettingsNamesNote.Text" xml:space="preserve"><value>Optional names are saved on this PC only and are never sent to the controller.</value></data>
+  <data name="SettingsProbes.Text" xml:space="preserve"><value>Probes</value></data>
+  <data name="SettingsFans.Text" xml:space="preserve"><value>Fans</value></data>
+  <data name="SettingsDeviceName.PlaceholderText" xml:space="preserve"><value>Custom name (optional)</value></data>
+  <data name="SettingsDeviceName.AutomationProperties.Name" xml:space="preserve"><value>Custom name</value></data>
   <data name="SettingsConnection.Text" xml:space="preserve"><value>Controller connection</value></data>
   <data name="SettingsLinkQuality.ToolTipService.ToolTip" xml:space="preserve"><value>Signal received by the ESP32: values closer to zero dBm indicate a stronger signal.</value></data>
   <data name="SettingsScan.Content" xml:space="preserve"><value>Search (15 s)</value></data>
@@ -60,9 +82,13 @@
   <data name="Fan.Title" xml:space="preserve"><value>Fan {0} • probe {1}</value></data>
   <data name="Fan.Name" xml:space="preserve"><value>Fan {0}</value></data>
   <data name="Profile.Title" xml:space="preserve"><value>Probe profile {0} • fans {1}</value></data>
+  <data name="Profile.NamedTitle" xml:space="preserve"><value>{0} • fans {1}</value></data>
   <data name="Plot.PwmLabel" xml:space="preserve"><value>PWM (%) • linear interpolation</value></data>
   <data name="History.ProbeSeries" xml:space="preserve"><value>Probe {0} • °C</value></data>
   <data name="History.FanSeries" xml:space="preserve"><value>Fan {0} • RPM</value></data>
+  <data name="DeviceNames.Saved" xml:space="preserve"><value>Names saved on this PC only.</value></data>
+  <data name="DeviceNames.LoadError" xml:space="preserve"><value>Unable to load local names: {0}</value></data>
+  <data name="DeviceNames.SaveError" xml:space="preserve"><value>Local names were not saved: {0}</value></data>
   <data name="History.Controller" xml:space="preserve"><value>Controller {0:X12}</value></data>
   <data name="History.InitialMessage" xml:space="preserve"><value>Local history • 30-day retention</value></data>
   <data name="History.ReadError" xml:space="preserve"><value>Unable to read history: {0}</value></data>

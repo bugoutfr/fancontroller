@@ -19,7 +19,8 @@ internal static class DesktopServices
             () => new WindowsBleTransport(), WindowsBleTransport.IsPairedAsync,
             new ConnectionPreferences(Path.Combine(DataDirectory, "last-device.txt")), store);
 
-        return new(connection, history, dispatcher, new StartupSettings(), () => new BleScanner(), Diagnostics.Record);
+        return new(connection, history, dispatcher, new StartupSettings(), () => new BleScanner(), Diagnostics.Record,
+            new DeviceNamePreferences(Path.Combine(DataDirectory, "device-names.json")));
     }
 
     private sealed class StartupSettings : IStartupSettings

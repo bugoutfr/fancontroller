@@ -4,6 +4,8 @@ using FanController.App.Services;
 using Microsoft.UI.Xaml;
 using Windows.Graphics;
 using Microsoft.UI.Windowing;
+using Microsoft.UI.Xaml.Controls;
+using Windows.Storage.Pickers;
 
 namespace FanController.App;
 
@@ -16,6 +18,7 @@ public sealed partial class MainWindow : Window
     private bool _initializingLanguage = true;
     private bool _isFrench;
     private bool _shutdownStarted, _shutdownComplete;
+    private bool _firmwarePicking;
     private readonly LanguagePreferences _languagePreferences = new(
         Path.Combine(DesktopServices.DataDirectory, "language.txt"));
 
@@ -163,4 +166,54 @@ public sealed partial class MainWindow : Window
     }
 
     private void QuitClicked(object sender, RoutedEventArgs args) => Quit();
+
+    private async void FirmwareUpdateClicked(object sender, RoutedEventArgs args)
+    {
+        if (_firmwarePicking || !_viewModel.CanUpdateFirmware)
+            return;
+        _firmwarePicking = true;
+        try
+        {
+            var picker = new FileOpenPicker();
+            WinRT.Interop.InitializeWithWindow.Initialize(picker, WinRT.Interop.WindowNative.GetWindowHandle(this));
+            picker.FileTypeFilter.Add(".bin");
+            var file = await picker.PickSingleFileAsync();
+            if (file is not null && !_shutdownStarted && _viewModel.CanUpdateFirmware)
+                await _viewModel.UpdateFirmwareAsync(file.Path, ConfirmFirmwareActivationAsync);
+        }
+        catch (Exception ex) { _viewModel.ReportError(ex); }
+        finally { _firmwarePicking = false; }
+    }
+
+    private void FirmwareCancelClicked(object sender, RoutedEventArgs args) => _viewModel.CancelFirmwareUpdate();
+
+    private Task<bool> ConfirmFirmwareActivationAsync(CancellationToken ct)
+    {
+        var completion = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        if (!DispatcherQueue.TryEnqueue(async () =>
+        {
+            try
+            {
+                ct.ThrowIfCancellationRequested();
+                var dialog = new ContentDialog
+                {
+                    XamlRoot = Root.XamlRoot,
+                    RequestedTheme = ElementTheme.Dark,
+                    Title = Localizer.Get("Ota.ConfirmTitle", "Firmware verified: restart now?"),
+                    Content = Localizer.Get("Ota.ConfirmBody", "The transfer passed integrity and image checks. Restarting briefly interrupts regulation and may interrupt cooling. Unsaved RAM settings will be lost. Only proceed when it is safe."),
+                    PrimaryButtonText = Localizer.Get("Ota.Activate", "Activate and restart"),
+                    CloseButtonText = Localizer.Get("Ota.Discard", "Discard firmware"),
+                    DefaultButton = ContentDialogButton.Close
+                };
+                using var registration = ct.Register(() => DispatcherQueue.TryEnqueue(() => dialog.Hide()));
+                var result = await dialog.ShowAsync();
+                ct.ThrowIfCancellationRequested();
+                completion.TrySetResult(result == ContentDialogResult.Primary);
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested) { completion.TrySetCanceled(ct); }
+            catch (Exception ex) { completion.TrySetException(ex); }
+        }))
+            completion.TrySetException(new IOException("The firmware confirmation could not be displayed."));
+        return completion.Task;
+    }
 }

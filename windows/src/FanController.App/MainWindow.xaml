@@ -142,6 +142,40 @@
                             </StackPanel>
                         </Border>
                         <Border Style="{StaticResource Card}">
+                            <StackPanel Spacing="10">
+                                <TextBlock loc:Localizer.Key="SettingsNames" Text="Device names" FontSize="20" FontWeight="SemiBold"/>
+                                <TextBlock loc:Localizer.Key="SettingsNamesNote" Text="Optional names are saved on this PC only and are never sent to the controller."
+                                           Foreground="#AABBD2" TextWrapping="Wrap"/>
+                                <TextBlock loc:Localizer.Key="SettingsProbes" Text="Probes" FontWeight="SemiBold"/>
+                                <ItemsControl ItemsSource="{Binding Sensors}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Grid ColumnSpacing="12" Margin="0,0,0,8">
+                                                <Grid.ColumnDefinitions><ColumnDefinition Width="180"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                                <TextBlock Text="{Binding ReferenceName}" VerticalAlignment="Center"/>
+                                                <TextBox Grid.Column="1" Text="{Binding CustomName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                         MaxLength="40" loc:Localizer.Key="SettingsDeviceName" PlaceholderText="Custom name (optional)"/>
+                                            </Grid>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                                <TextBlock loc:Localizer.Key="SettingsFans" Text="Fans" FontWeight="SemiBold"/>
+                                <ItemsControl ItemsSource="{Binding FanReadings}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Grid ColumnSpacing="12" Margin="0,0,0,8">
+                                                <Grid.ColumnDefinitions><ColumnDefinition Width="180"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                                <TextBlock Text="{Binding ReferenceName}" VerticalAlignment="Center"/>
+                                                <TextBox Grid.Column="1" Text="{Binding CustomName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                         MaxLength="40" loc:Localizer.Key="SettingsDeviceName" PlaceholderText="Custom name (optional)"/>
+                                            </Grid>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                                <TextBlock Text="{Binding DeviceNamesStatus}" TextWrapping="Wrap" Foreground="#AABBD2"/>
+                            </StackPanel>
+                        </Border>
+                        <Border Style="{StaticResource Card}">
                             <StackPanel Spacing="12">
                                 <Grid ColumnSpacing="16">
                                     <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
@@ -173,6 +207,22 @@
                                     <TextBlock loc:Localizer.Key="SettingsPairingInstructions" Text="1. On the ESP32, hold BOOT for 2 seconds, then release.&#x0a;2. Within 60 seconds, search for the controller, select it, then click Connect / pair.&#x0a;Later connections are automatic; BOOT is not needed again."
                                                TextWrapping="Wrap" Foreground="#AABBD2" AutomationProperties.AutomationId="PairingInstructions"/>
                                 </Expander>
+                            </StackPanel>
+                        </Border>
+                        <Border Style="{StaticResource Card}">
+                            <StackPanel Spacing="12">
+                                <TextBlock loc:Localizer.Key="OtaHeading" Text="Firmware update over Bluetooth" FontSize="22" FontWeight="SemiBold"/>
+                                <TextBlock loc:Localizer.Key="OtaWarning" Text="Select a trusted application .bin file, not a merged flash image. Save settings first: unsaved RAM changes will be lost on restart. SHA-256 checks integrity, not the publisher. Keep the controller powered."
+                                           TextWrapping="Wrap" Foreground="#AABBD2"/>
+                                <TextBlock Text="{Binding FirmwareMessage}" TextWrapping="Wrap"/>
+                                <ProgressBar Minimum="0" Maximum="100" Value="{Binding FirmwareProgress}"
+                                             Visibility="{Binding FirmwareUpdating, Converter={StaticResource BooleanVisibility}}"/>
+                                <StackPanel Orientation="Horizontal" Spacing="12">
+                                    <Button x:Name="FirmwareUpdateButton" loc:Localizer.Key="OtaSelect" Content="Select firmware .bin"
+                                            IsEnabled="{Binding CanUpdateFirmware}" Click="FirmwareUpdateClicked"/>
+                                    <Button loc:Localizer.Key="OtaCancel" Content="Cancel update" Click="FirmwareCancelClicked"
+                                            Visibility="{Binding FirmwareUpdating, Converter={StaticResource BooleanVisibility}}"/>
+                                </StackPanel>
                             </StackPanel>
                         </Border>
                         <StackPanel Spacing="16" Visibility="{Binding Connected, Converter={StaticResource BooleanVisibility}}"

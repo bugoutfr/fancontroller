@@ -1,7 +1,6 @@
 #pragma once
 
 #include <Arduino.h>
-#include <ArduinoJson.h>
 #include "Controller.h"
 
 namespace controller {
@@ -14,7 +13,7 @@ public:
 
     void begin();
     void update(uint32_t now, const Config& config);
-    void writeStatus(JsonObject data, const Config& config) const;
+    ThermalStatus status(const Config& config) const;
 
 private:
     struct SensorState {

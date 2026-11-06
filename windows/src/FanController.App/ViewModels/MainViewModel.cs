@@ -12,6 +12,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
     private readonly IUiDispatcher _dispatcher;
     private readonly ControllerConnection _connection;
     private readonly IStartupSettings _startup;
+    private readonly DeviceNamePreferences _deviceNamePreferences;
     private readonly Func<IBleScanner> _scannerFactory;
     private readonly Action<Exception> _log;
     private readonly CancellationTokenSource _applicationLifetime = new();
@@ -19,6 +20,99 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
     private Task _initialization = Task.CompletedTask;
     private Task? _shutdown;
     private bool _launchAtStartup;
+    private CancellationTokenSource? _firmwareCts;
+    private Task<bool>? _firmwareUpdate;
+    private bool _firmwareUpdating;
+    private double _firmwareProgress;
+    private string _firmwareMessageKey = "Ota.Initial", _firmwareMessageFallback = "OTA requires firmware 1.2.0 or later, initially installed over USB.";
+
+    /// <summary>Whether firmware loading, transfer, confirmation or restart verification is active.</summary>
+    public bool FirmwareUpdating
+    {
+        get => _firmwareUpdating;
+        private set
+        {
+            Set(ref _firmwareUpdating, value);
+            Changed(nameof(CanUpdateFirmware));
+        }
+    }
+
+    /// <summary>Whether a new firmware transfer may be started.</summary>
+    public bool CanUpdateFirmware => Ready() && !FirmwareUpdating && _connection.FirmwareUpdateSupported;
+
+    /// <summary>Percentage of selected firmware bytes acknowledged in flash.</summary>
+    public double FirmwareProgress
+    {
+        get => _firmwareProgress;
+        private set => Set(ref _firmwareProgress, value);
+    }
+
+    /// <summary>Localized firmware operation status, separate from configuration status.</summary>
+    public string FirmwareMessage => Localizer.Get(_firmwareMessageKey, _firmwareMessageFallback);
+
+    private void SetFirmwareMessage(string key, string fallback)
+    {
+        _firmwareMessageKey = key;
+        _firmwareMessageFallback = fallback;
+        Changed(nameof(FirmwareMessage));
+    }
+
+    /// <summary>Starts an owned OTA operation; shutdown cancels and awaits it.</summary>
+    /// <param name="path">Local .bin application file.</param>
+    /// <param name="confirmActivation">Cancelable presentation confirmation after firmware validation.</param>
+    /// <returns>True after verification of the running image; false when activation was declined.</returns>
+    public Task<bool> UpdateFirmwareAsync(string path, Func<CancellationToken, Task<bool>> confirmActivation)
+    {
+        if (!CanUpdateFirmware)
+            throw new InvalidOperationException("Firmware update is unavailable or another operation is active.");
+        return _firmwareUpdate = UpdateFirmwareCoreAsync(path, confirmActivation);
+    }
+
+    private async Task<bool> UpdateFirmwareCoreAsync(string path, Func<CancellationToken, Task<bool>> confirmActivation)
+    {
+        using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(_applicationLifetime.Token);
+        _firmwareCts = cancellation;
+        FirmwareUpdating = true;
+        Busy = true;
+        FirmwareProgress = 0;
+        Error = "";
+        SetFirmwareMessage("Ota.Transferring", "Transferring firmware; polling is suspended. Do not remove power.");
+        try
+        {
+            var progress = new Progress<double>(value => FirmwareProgress = value);
+            var activated = await _connection.UpdateFirmwareAsync(path, progress, async ct =>
+            {
+                Dispatch(() => SetFirmwareMessage("Ota.Validated", "Firmware validated; waiting for activation confirmation."));
+                var activate = await confirmActivation(ct);
+                if (activate)
+                    Dispatch(() => SetFirmwareMessage("Ota.Restarting", "Activation requested; reconnecting to verify the running firmware."));
+                return activate;
+            }, cancellation.Token);
+            SetFirmwareMessage(activated ? "Ota.Success" : "Ota.Discarded",
+                activated ? "Restart complete: the running firmware image was verified." : "Firmware discarded without activation or restart.");
+            return activated;
+        }
+        catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
+        {
+            SetFirmwareMessage("Ota.Canceled", "Update canceled. An interrupted transfer is never replayed.");
+            return false;
+        }
+        catch (Exception ex)
+        {
+            SetFirmwareMessage("Ota.Failed", "Update failed: the running image has not been verified.");
+            ReportError(ex);
+            return false;
+        }
+        finally
+        {
+            _firmwareCts = null;
+            FirmwareUpdating = false;
+            Busy = false;
+        }
+    }
+
+    /// <summary>Cancels a firmware operation without replaying any interrupted write.</summary>
+    public void CancelFirmwareUpdate() => _firmwareCts?.Cancel();
 
     /// <summary>Whether this executable launches minimized at Windows sign-in.</summary>
     public bool LaunchAtStartup
@@ -193,7 +287,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
     }
 
     /// <summary>Whether controls may edit the connected draft.</summary>
-    public bool CanEdit => Connected && !Busy;
+    public bool CanEdit => Connected && !Busy && !FirmwareUpdating;
 
     /// <summary>The connection label warning that retained offline readings are stale.</summary>
     public string ConnectionLabel => Localizer.Get(Connected ? "Connection.Connected" : "Connection.Disconnected",
@@ -254,6 +348,14 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         _localDirty ? Localizer.Get("Settings.LocalChanges", "Local changes NOT applied") :
         Localizer.Get("Settings.DraftMatches", "Draft matches the last configuration read");
     private string _lastUpdate = Localizer.Get("State.NoData", "No readings received.");
+    private string _deviceNamesStatus = Localizer.Get("DeviceNames.Saved", "Names are saved on this PC only.");
+
+    /// <summary>Explains the local-only status of customized device names.</summary>
+    public string DeviceNamesStatus
+    {
+        get => _deviceNamesStatus;
+        private set => Set(ref _deviceNamesStatus, value);
+    }
 
     /// <summary>The timestamp and uptime of the latest displayed measurement.</summary>
     public string LastUpdate
@@ -322,6 +424,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         Changed(nameof(LinkQuality));
         Changed(nameof(ConfigurationMessage));
         Changed(nameof(Firmware));
+        Changed(nameof(FirmwareMessage));
         Changed(nameof(ConnectionLabel));
         Changed(nameof(Message));
         Changed(nameof(LocalState));
@@ -353,25 +456,44 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
     /// <summary>Creates presentation commands using externally composed connection and platform services.</summary>
     public MainViewModel(
         ControllerConnection connection, HistoryViewModel history, IUiDispatcher dispatcher,
-        IStartupSettings startup, Func<IBleScanner> scannerFactory, Action<Exception> log)
+        IStartupSettings startup, Func<IBleScanner> scannerFactory, Action<Exception> log,
+        DeviceNamePreferences deviceNamePreferences)
     {
         _dispatcher = dispatcher;
         _connection = connection;
         _startup = startup;
+        _deviceNamePreferences = deviceNamePreferences;
         _scannerFactory = scannerFactory;
         _log = log;
         History = history;
 
         _connection.Changed += ConnectionChanged;
+        _connection.FirmwareVerified += FirmwareVerified;
         _connection.TelemetryReceived += TelemetryReceived;
         _connection.HistoryWritten += HistoryWritten;
         _connection.HistoryWriteFailed += HistoryWriteFailed;
         _connection.PreferenceFailed += PreferenceFailed;
 
+        var deviceNames = ReadDeviceNames();
         for (var sensor = 1; sensor <= 2; sensor++)
-            Sensors.Add(new(sensor, Localizer.Format("Sensor.Title", "Probe {0}", sensor)));
+        {
+            var display = new SensorDisplay(sensor, Localizer.Format("Sensor.Title", "Probe {0}", sensor))
+            {
+                CustomName = deviceNames.Sensors[sensor - 1]
+            };
+            display.PropertyChanged += DeviceNameChanged;
+            Sensors.Add(display);
+        }
         for (var fan = 1; fan <= 4; fan++)
-            FanReadings.Add(new(fan, Localizer.Format("Fan.Title", "Fan {0} • probe {1}", fan, (fan - 1) / 2 + 1)));
+        {
+            var display = new FanDisplay(fan, Localizer.Format("Fan.Title", "Fan {0} • probe {1}", fan, (fan - 1) / 2 + 1))
+            {
+                CustomName = deviceNames.Fans[fan - 1]
+            };
+            display.PropertyChanged += DeviceNameChanged;
+            FanReadings.Add(display);
+        }
+        UpdateDeviceNameViews();
 
         ScanCommand = Command(ScanAsync, () => !Busy && !Connected && !_scanning);
         ConnectCommand = Command(ConnectAsync, () => !Busy && !Connected && SelectedDevice is not null);
@@ -410,7 +532,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         }), Ready);
     }
 
-    private AsyncCommand Command(Func<Task> action, Func<bool> enabled) => new(action, () => !_disposed && enabled(), ex =>
+    private AsyncCommand Command(Func<Task> action, Func<bool> enabled) => new(action, () => !_disposed && !FirmwareUpdating && enabled(), ex =>
     {
         if (ex is OperationCanceledException && (_disposed || _connection.ReconnectionPaused))
             return;
@@ -419,7 +541,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
             Error = ErrorMessages.Details(ex);
     });
 
-    private bool Ready() => Connected && !Busy;
+    private bool Ready() => Connected && !Busy && !FirmwareUpdating;
 
     private void RefreshCommands()
     {
@@ -430,6 +552,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         Changed(nameof(DisconnectVisible));
         Changed(nameof(DisconnectLabel));
         Changed(nameof(ConnectionHeading));
+        Changed(nameof(CanUpdateFirmware));
     }
 
     private void Dispatch(Action action)
@@ -607,6 +730,9 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
             UpdateTelemetry(status);
     });
 
+    private void FirmwareVerified(ulong address) => Dispatch(() =>
+        SetFirmwareMessage("Ota.Success", "Restart complete: the running firmware image was verified."));
+
     private void HistoryWritten(ulong address) => Dispatch(() => History.MeasurementWritten(address));
 
     private void HistoryWriteFailed(Exception error) => Dispatch(() => History.ReportWriteError(error));
@@ -655,10 +781,12 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         _scanCts?.Cancel();
         RefreshCommands();
         await _connection.DisposeAsync();
-        await Task.WhenAll(Commands.Select(command => command.ExecutionTask).Append(_initialization));
+        await Task.WhenAll(Commands.Select(command => command.ExecutionTask).Append(_initialization)
+            .Append(_firmwareUpdate is null ? Task.CompletedTask : _firmwareUpdate));
         await History.DisposeAsync();
 
         _connection.Changed -= ConnectionChanged;
+        _connection.FirmwareVerified -= FirmwareVerified;
         _connection.TelemetryReceived -= TelemetryReceived;
         _connection.HistoryWritten -= HistoryWritten;
         _connection.HistoryWriteFailed -= HistoryWriteFailed;
@@ -675,6 +803,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
             var editor = new ProfileEditor(i + 1, config.Profiles[i], ReportError);
             editor.Edited += DraftChanged;
             Profiles.Add(editor);
+            UpdateProfileNames(editor);
         }
         for (var i = 0; i < 4; i++)
         {
@@ -683,6 +812,64 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
             Fans.Add(editor);
         }
         DraftChanged();
+    }
+
+    private DeviceNames ReadDeviceNames()
+    {
+        try
+        {
+            return _deviceNamePreferences.Load();
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Security.SecurityException or JsonException)
+        {
+            _log(ex);
+            DeviceNamesStatus = Localizer.Format("DeviceNames.LoadError", "Unable to load local names: {0}", ex.Message);
+            return DeviceNames.Empty;
+        }
+    }
+
+    private void DeviceNameChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs args)
+    {
+        if (args.PropertyName != nameof(TelemetryDisplay.CustomName))
+            return;
+
+        SaveDeviceNames();
+        UpdateDeviceNameViews();
+    }
+
+    private void SaveDeviceNames()
+    {
+        try
+        {
+            _deviceNamePreferences.Save(new(
+                Sensors.Select(sensor => sensor.CustomName).ToArray(),
+                FanReadings.Select(fan => fan.CustomName).ToArray()));
+            DeviceNamesStatus = Localizer.Get("DeviceNames.Saved", "Names are saved on this PC only.");
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Security.SecurityException or ArgumentException)
+        {
+            _log(ex);
+            DeviceNamesStatus = Localizer.Format("DeviceNames.SaveError", "Local names were not saved: {0}", ex.Message);
+        }
+    }
+
+    private void UpdateDeviceNameViews()
+    {
+        History.SetDeviceNames(
+            Sensors.Select(sensor => sensor.CustomName).ToArray(),
+            FanReadings.Select(fan => fan.CustomName).ToArray());
+        foreach (var profile in Profiles)
+            UpdateProfileNames(profile);
+    }
+
+    private void UpdateProfileNames(ProfileEditor profile)
+    {
+        var sensorIndex = profile.Sensor - 1;
+        var firstFanIndex = sensorIndex * 2;
+        profile.SetDeviceNames(
+            Sensors[sensorIndex].CustomName,
+            FanReadings[firstFanIndex].CustomName,
+            FanReadings[firstFanIndex + 1].CustomName);
     }
 
     private Configuration ReadDraft() => new(1, Profiles.Select(p => p.Read()).ToArray(), Fans.Select(f => f.Read()).ToArray());

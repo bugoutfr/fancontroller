@@ -8,6 +8,37 @@ namespace FanController.Tests;
 public sealed class EditorTests
 {
     [Fact]
+    public void CustomNamesDoNotChangeNumberedDeviceReferences()
+    {
+        TelemetryDisplay[] devices =
+        [
+            new SensorDisplay(1, "Probe 1"), new SensorDisplay(2, "Probe 2"),
+            new FanDisplay(1, "Fan 1"), new FanDisplay(2, "Fan 2"),
+            new FanDisplay(3, "Fan 3"), new FanDisplay(4, "Fan 4")
+        ];
+        var references = new[] { "Probe 1", "Probe 2", "Fan 1", "Fan 2", "Fan 3", "Fan 4" };
+        for (var i = 0; i < devices.Length; i++)
+        {
+            var device = devices[i];
+            Assert.Equal(references[i], device.ReferenceName);
+            device.CustomName = "Graphics card";
+            Assert.Equal("Graphics card", device.Title);
+            Assert.Equal(references[i], device.ReferenceName);
+
+            var changes = new List<string?>();
+            device.PropertyChanged += (_, args) => changes.Add(args.PropertyName);
+            device.RefreshLocalization();
+            Assert.Contains(nameof(TelemetryDisplay.ReferenceName), changes);
+            Assert.Equal(references[i], device.ReferenceName);
+            Assert.Equal("Graphics card", device.Title);
+
+            device.CustomName = "";
+            Assert.Equal(references[i], device.ReferenceName);
+            Assert.NotEqual("Graphics card", device.Title);
+        }
+    }
+
+    [Fact]
     public void RepeatedAdvertisementsKeepDeviceItemsAndSelectionStable()
     {
         var index = new AdvertisementIndex();

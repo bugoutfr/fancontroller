@@ -22,6 +22,7 @@ public:
     String(const char* value) : value_(value ? value : "") {}
     String& operator=(const char* value) {
         value_ = value ? value : "";
+        readOffset_ = 0;
         return *this;
     }
     String& operator+=(char value) {
@@ -32,6 +33,26 @@ public:
         value_ += value;
         return true;
     }
+    int read() const {
+        return readOffset_ < value_.length()
+            ? static_cast<unsigned char>(value_[readOffset_++])
+            : -1;
+    }
+    size_t readBytes(char* buffer, size_t length) const {
+        const size_t remaining = value_.length() - readOffset_;
+        const size_t count = length < remaining ? length : remaining;
+        std::memcpy(buffer, value_.data() + readOffset_, count);
+        readOffset_ += count;
+        return count;
+    }
+    size_t write(uint8_t value) {
+        value_ += static_cast<char>(value);
+        return 1;
+    }
+    size_t write(const uint8_t* value, size_t length) {
+        value_.append(reinterpret_cast<const char*>(value), length);
+        return length;
+    }
     const char* c_str() const { return value_.c_str(); }
     size_t length() const { return value_.length(); }
     bool isEmpty() const { return value_.empty(); }
@@ -40,6 +61,7 @@ public:
 
 private:
     std::string value_;
+    mutable size_t readOffset_ = 0;
 };
 
 namespace fake {

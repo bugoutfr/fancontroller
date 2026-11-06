@@ -44,6 +44,27 @@ struct Temperature {
     SensorFault fault;
 };
 
+struct SensorStatus {
+    float millivolts;
+    Temperature temperature;
+    bool safety;
+};
+
+struct FanStatus {
+    float requestedDuty;
+    float appliedDuty;
+    float rpm;
+    float fixedDuty;
+    bool automatic;
+    bool boosting;
+    bool pwmReady;
+};
+
+struct ThermalStatus {
+    SensorStatus sensors[SensorCount];
+    FanStatus fans[FanCount];
+};
+
 inline Config defaults() {
     Config config{};
     for (auto& profile : config.profiles) {

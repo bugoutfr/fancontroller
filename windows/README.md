@@ -47,6 +47,42 @@ Publishing is unpackaged, self-contained .NET and Windows App SDK. Distribute th
 
 A multi-command update is not atomic. If the link fails, some changes may have taken effect. The app invalidates the session and never retries an interrupted write. After reconnecting, review the actual configuration and local draft before applying again. Draft edits are retained during disconnects but not after closing the app.
 
+## Firmware update over Bluetooth
+
+Install firmware **1.2.0 or later once over USB**, including its OTA-compatible partition table.
+In Settings, select an OTA-capable FanController PlatformIO application `firmware.bin` (1.2.0 or later,
+not a bootloader, partition table or merged image). Post-restart verification requires the new firmware's OTA service.
+The image must target the classic ESP32 and fit the inactive **1.25 MiB** application partition.
+The existing paired owner and encrypted BLE link are required. Old firmware remains usable with this client,
+but the update button is disabled when its OTA characteristic is absent.
+
+The client checks the embedded ESP image digest locally, transfers binary blocks with explicit flash-write
+acknowledgments, then verifies the complete file SHA-256 returned by the controller.
+
+Firmware 1.4.0 advertises Write Without Response for OTA, avoiding a redundant GATT response;
+the client automatically uses it while still awaiting the explicit flash acknowledgment for every block.
+Earlier firmware continues using Write With Response. Payload size follows the negotiated MTU,
+up to 508 image bytes per block. Faster MTU/link settings require the new firmware to be running;
+the first update from 1.3.0 uses its existing settings. The firmware serial log reports negotiated
+MTU and verified transfer throughput, excluding initial erase, confirmation and restart.
+
+Polling and setting commands are suspended during the operation. Progress describes bytes acknowledged, not successful activation.
+After validation, a separate confirmation offers **Activate and restart** or **Discard firmware**.
+Save settings beforehand: unsaved RAM settings and uncommitted drafts are not automatically written.
+Drafts are retained locally, but RAM settings are lost on restart.
+
+After activation the client reconnects without re-pairing and compares the running partition's embedded image
+digest with the selected image. Success is shown only after this verification, not merely after transfer.
+Transient post-restart connection failures are retried for up to 90 seconds without re-pairing or
+replaying OTA writes. If this verification window expires, the pending image digest is retained
+for the next connection during the same application session; a matching digest then updates the
+OTA result to success. A mismatched digest remains an error.
+Interrupted writes are never retried or resumed; start a new update after reconnecting. Cancellation before
+activation leaves the old boot partition selected; cancellation after activation cannot undo the restart.
+Keep power connected. Regulation continues between flash operations, but flash erase/write can delay acquisition,
+and resetting the MCU can briefly interrupt cooling. Do not update equipment that cannot tolerate this.
+SHA-256 checks corruption, **not publisher authenticity**; only use trusted files.
+
 ## Automatic connection and tray behavior
 
 After a successful initial read, the last controller address is stored in `%LOCALAPPDATA%\FanController\last-device.txt`. At startup, the app reconnects only to that controller if it remains paired in Windows. It never automatically chooses another device or opens a new pairing window.
@@ -58,6 +94,9 @@ Closing or minimizing the window hides it in the system tray; BLE acquisition co
 ## Interface and history
 
 The dashboard displays live readings and firmware version. Settings contains connection controls, profile charts, and fan modes. Chart segments show linear interpolation; in edit mode, drag points to adjust temperature and PWM. The profile axes remain fixed at −20…120 °C and 0…100%. The add button inserts a point into the widest temperature interval while preserving the curve shape.
+
+Settings also lets you assign optional names to each probe and fan. These labels are saved locally in `%LOCALAPPDATA%\FanController\device-names.json`, appear on the dashboard and history charts, and are never sent to or saved by the ESP32.
+The name editor keeps numbered references (Probe 1, Probe 2, Fan 1–4) in its left column, regardless of custom names.
 
 History stores received readings locally as per-controller, per-day JSONL files under `%LOCALAPPDATA%\FanController\history`. It retains 30 days and supports 1 hour, 24 hours, 7 days, and 30 days. Data is recorded only while the app receives connected measurements; offline periods are not reconstructed. Files are not uploaded. Disk errors are shown and logged without stopping fan control or BLE acquisition.
 
@@ -96,7 +135,7 @@ The client uses .NET APIs, `System.Text.Json`, `INotifyPropertyChanged`, and `IC
 
 ## Pairing security
 
-BLE **LE Secure Connections Just Works** encrypts the link but does not provide man-in-the-middle protection on first pairing. Pair in a trusted location near the board. The physical BOOT action authorizes the first owner; the app cannot display an identity on the ESP32. Holding BOOT for 10 seconds and releasing revokes the owner. Remove the Windows pairing before pairing again.
+BLE **LE Secure Connections Just Works** encrypts the link but does not provide man-in-the-middle protection on first pairing. Pair in a trusted location near the board. The physical BOOT action authorizes the first owner; the app cannot display an identity on the ESP32. With firmware 1.3.0 or later, holding BOOT for at least 5 seconds and releasing revokes the owner and immediately opens a 60-second pairing window; the GPIO2 D2 LED flashes twice, then blinks until enrollment succeeds or expires. Since 1.4.0, the LED stays on during an authorized encrypted connection and turns off on disconnection unless enrollment remains open. Remove the old Windows pairing before connecting. Earlier firmware requires a 10-second hold to revoke, then a separate 2-second hold to enroll.
 
 ## License
 

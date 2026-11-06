@@ -1,4 +1,5 @@
 #include "PairingSecurity.h"
+#include "HardwareConfig.h"
 #include <nimble/nimble/host/include/host/ble_hs.h>
 
 namespace controller {
@@ -13,8 +14,10 @@ String PairingSecurity::identity(const NimBLEConnInfo& info) {
     return String(text);
 }
 
-void PairingSecurity::begin() {
+bool PairingSecurity::begin() {
     pinMode(0, INPUT_PULLUP);
+    digitalWrite(hardware::PairingLedPin, LOW);
+    pinMode(hardware::PairingLedPin, OUTPUT);
     ready_ = storage_.begin("ble-owner", false);
     if (!ready_) {
         Serial.println("ERROR: pairing NVS unavailable; all BLE access denied");
@@ -34,7 +37,8 @@ void PairingSecurity::begin() {
         Serial.println("ERROR: BLE key storage full; refusing eviction of existing bonds");
         return BLE_HS_ENOMEM;
     };
-    Serial.println("BLE: BOOT hold 2s then release to pair (60s); 10s then release revokes owner");
+    Serial.println("BLE: BOOT hold 2s then release to pair (60s); 5s then release revokes owner and opens pairing");
+    return ready_;
 }
 
 bool PairingSecurity::update(uint32_t now) {
@@ -42,6 +46,7 @@ bool PairingSecurity::update(uint32_t now) {
     const auto action = button_.update(digitalRead(0) == LOW, now);
     if (action == ButtonAction::Revoke) {
         button_.close();
+        connected_ = false;
         const char* failure = nullptr;
         if (!ready_) {
             failure = "pairing storage unavailable";
@@ -58,19 +63,46 @@ bool PairingSecurity::update(uint32_t now) {
             Serial.printf("ERROR: bond revocation failed (%s); BLE disabled until restart\n", failure);
         } else {
             owner_ = "";
-            Serial.println("BLE: bonds revoked; remove Windows pairing, then hold BOOT 2s to enroll again");
+            button_.open(now);
+            revokedAt_ = now;
+            revocationFlash_ = true;
+            Serial.println("BLE: bonds revoked; enrollment OPEN for 60s (Just Works; no MITM protection); remove old Windows pairing before connecting");
         }
+        updateIndicator(now);
         return true;
     }
     if (action == ButtonAction::Enroll) {
         if (!ready_ || !owner_.isEmpty()) {
-            Serial.println("BLE: enrollment denied; revoke existing owner first (BOOT 10s)");
+            Serial.println("BLE: enrollment denied; hold BOOT 5s then release to revoke owner and open pairing");
         } else {
             button_.open(now);
             Serial.println("BLE: enrollment OPEN for 60s (Just Works; no MITM protection)");
         }
     }
+    updateIndicator(now);
     return false;
+}
+
+void PairingSecurity::updateIndicator(uint32_t now) {
+    bool on = ready_ && connected_;
+    if (ready_ && owner_.isEmpty() && button_.isOpen(now)) {
+        const uint32_t elapsed = now - revokedAt_;
+        if (revocationFlash_ && elapsed < 400) {
+            on = elapsed < 100 || (elapsed >= 200 && elapsed < 300);
+        } else {
+            revocationFlash_ = false;
+            on = (now / 250) % 2 == 0;
+        }
+    } else {
+        revocationFlash_ = false;
+    }
+    digitalWrite(hardware::PairingLedPin, on ? HIGH : LOW);
+}
+
+void PairingSecurity::setConnected(bool connected) {
+    std::lock_guard<std::mutex> guard(mutex_);
+    connected_ = connected;
+    updateIndicator(millis());
 }
 
 bool PairingSecurity::resumeAdvertising() {
@@ -125,6 +157,7 @@ bool PairingSecurity::authorize(const NimBLEConnInfo& info) {
     }
     owner_ = peer;
     button_.close();
+    updateIndicator(millis());
     Serial.println("BLE: owner enrolled and stored; enrollment CLOSED");
     return true;
 }

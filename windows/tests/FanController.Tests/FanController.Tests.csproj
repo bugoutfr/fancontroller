@@ -16,6 +16,7 @@
     <Compile Include="..\..\src\FanController.App\Services\IBleScanner.cs" Link="Services\IBleScanner.cs" />
     <Compile Include="..\..\src\FanController.App\Services\IStartupSettings.cs" Link="Services\IStartupSettings.cs" />
     <Compile Include="..\..\src\FanController.App\Services\LanguagePreferences.cs" Link="Services\LanguagePreferences.cs" />
+    <Compile Include="..\..\src\FanController.App\Services\DeviceNamePreferences.cs" Link="Services\DeviceNamePreferences.cs" />
     <Compile Include="..\..\src\FanController.App\Localization\ErrorMessages.cs" Link="Localization\ErrorMessages.cs" />
     <Compile Include="..\..\src\FanController.App\Diagnostics.cs" Link="Diagnostics.cs" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.11.0" />

@@ -99,6 +99,7 @@ public sealed class ProfileEditor : ObservableObject
         public void Refresh() => CanExecuteChanged?.Invoke(this, EventArgs.Empty);
     }
     private bool _isEditing;
+    private string? _sensorName, _firstFanName, _secondFanName;
 
     /// <summary>Whether chart dragging is allowed.</summary>
     public bool IsEditing
@@ -138,8 +139,30 @@ public sealed class ProfileEditor : ObservableObject
             var fans = Sensor == 1
                 ? Localizer.Get("Profile.Fans1And2", "1 and 2")
                 : Localizer.Get("Profile.Fans3And4", "3 and 4");
-            return Localizer.Format("Profile.Title", $"Probe profile {Sensor} • fans {fans}", Sensor, fans);
+            var sensorName = string.IsNullOrWhiteSpace(_sensorName)
+                ? Localizer.Format("Sensor.Title", "Probe {0}", Sensor) : _sensorName.Trim();
+            if (!string.IsNullOrWhiteSpace(_firstFanName) || !string.IsNullOrWhiteSpace(_secondFanName))
+            {
+                var firstFan = string.IsNullOrWhiteSpace(_firstFanName)
+                    ? Localizer.Format("Fan.Name", "Fan {0}", (Sensor - 1) * 2 + 1) : _firstFanName.Trim();
+                var secondFan = string.IsNullOrWhiteSpace(_secondFanName)
+                    ? Localizer.Format("Fan.Name", "Fan {0}", (Sensor - 1) * 2 + 2) : _secondFanName.Trim();
+                fans = $"{firstFan}, {secondFan}";
+            }
+            return string.IsNullOrWhiteSpace(_sensorName) &&
+                string.IsNullOrWhiteSpace(_firstFanName) && string.IsNullOrWhiteSpace(_secondFanName)
+                ? Localizer.Format("Profile.Title", $"Probe profile {Sensor} • fans {fans}", Sensor, fans)
+                : Localizer.Format("Profile.NamedTitle", "{0} • fans {1}", sensorName, fans);
         }
+    }
+
+    /// <summary>Updates the local names shown in this sensor's profile heading.</summary>
+    public void SetDeviceNames(string? sensorName, string? firstFanName, string? secondFanName)
+    {
+        _sensorName = sensorName;
+        _firstFanName = firstFanName;
+        _secondFanName = secondFanName;
+        Changed(nameof(Title));
     }
 
     /// <summary>The labels for coordinate text fields.</summary>
@@ -377,12 +400,31 @@ public sealed class FanEditor : ObservableObject
 /// <summary>Shares waiting, summary/detail selection and change notifications for telemetry cards.</summary>
 public abstract class TelemetryDisplay : ObservableObject
 {
-    private string _title;
+    private string _defaultTitle;
 
     /// <summary>The card heading.</summary>
     public string Title
     {
-        get => _title; private set => Set(ref _title, value);
+        get => string.IsNullOrWhiteSpace(CustomName) ? _defaultTitle : CustomName.Trim();
+    }
+
+    /// <summary>The localized numbered device reference, independent of its custom name.</summary>
+    public abstract string ReferenceName
+    {
+        get;
+    }
+
+    private string _customName = "";
+
+    /// <summary>The optional user-defined card name, stored only by the desktop client.</summary>
+    public string CustomName
+    {
+        get => _customName;
+        set
+        {
+            if (Set(ref _customName, value))
+                Changed(nameof(Title));
+        }
     }
 
     private string _reading, _details;
@@ -427,7 +469,7 @@ public abstract class TelemetryDisplay : ObservableObject
     /// <summary>Creates a card in its waiting state.</summary>
     protected TelemetryDisplay(string title)
     {
-        _title = title;
+        _defaultTitle = title;
         _reading = Localizer.Get("State.Waiting", "Waiting");
         _details = Localizer.Get("State.NoData", "No readings received.");
         _summary = _details;
@@ -436,7 +478,9 @@ public abstract class TelemetryDisplay : ObservableObject
     /// <summary>Refreshes the heading and waiting state without overwriting an existing reading.</summary>
     public void RefreshLocalization()
     {
-        Title = LocalizedTitle;
+        _defaultTitle = LocalizedTitle;
+        Changed(nameof(Title));
+        Changed(nameof(ReferenceName));
         if (!_hasReadings)
         {
             SetWaiting(Localizer.Get("State.Waiting", "Waiting"), Localizer.Get("State.NoData", "No readings received."));
@@ -477,6 +521,9 @@ public sealed class SensorDisplay : TelemetryDisplay
         get;
     }
 
+    /// <inheritdoc />
+    public override string ReferenceName => Localizer.Format("Sensor.Title", "Probe {0}", Sensor);
+
     /// <summary>The formatted temperature, unavailable state or waiting label.</summary>
     public string Temperature => Reading;
 
@@ -505,6 +552,9 @@ public sealed class FanDisplay : TelemetryDisplay
     {
         get;
     }
+
+    /// <inheritdoc />
+    public override string ReferenceName => Localizer.Format("Fan.Name", "Fan {0}", Fan);
 
     /// <summary>The formatted RPM or waiting label.</summary>
     public string Rpm => Reading;
