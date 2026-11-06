@@ -26,6 +26,34 @@ Document public contracts, cancellation and ownership rather than adding comment
 
 The publish command uses the packages restored above and writes the Release application to `artifacts\desktop`.
 
+### Windows installer
+
+Build a self-contained **Windows 11 x64** setup EXE with Inno Setup 6:
+
+```powershell
+winget install --id JRSoftware.InnoSetup --exact --scope user
+.\scripts\Build-Setup.ps1 -Version 1.0.0
+```
+
+The version is embedded in both the application and setup. The result is
+`artifacts\installer\FanController-Setup-1.0.0-win-x64.exe`. If Inno Setup is installed
+elsewhere, pass `-IsccPath 'C:\path\to\ISCC.exe'`.
+
+The installer offers English/French UI, installs under
+`%LOCALAPPDATA%\Programs\FanController` without administrator privileges, creates a Start
+menu shortcut, and offers an optional desktop shortcut. .NET and Windows App SDK runtime
+files are included; no separate runtime installation is required. Future setup versions
+reuse the same application identity and installation directory.
+
+Before installation or an upgrade, **quit** any running copy using the tray menu or the
+application's Quit button; closing the window can leave it running in the tray.
+Automatic startup remains opt-in from the application's settings after installation.
+Uninstall removes the startup entry only if it points to the installation being removed,
+and preserves `%LOCALAPPDATA%\FanController` (settings, remembered device, names and history).
+The setup is not code-signed; Windows SmartScreen may warn about an unknown publisher.
+Only run installers obtained from a trusted source. The Windows app version is separate
+from the ESP32 firmware version.
+
 Development run:
 
 ```powershell
