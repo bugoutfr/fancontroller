@@ -1,4 +1,5 @@
 #include "ThermalController.h"
+#include <cstdio>
 #include <esp_arduino_version.h>
 #include "HardwareConfig.h"
 
@@ -20,7 +21,46 @@ const char* faultName(SensorFault fault) {
 void IRAM_ATTR ThermalController::tachInterrupt(void* argument) {
     auto& counter = *static_cast<TachCounter*>(argument);
     portENTER_CRITICAL_ISR(&counter.mux);
-    counter.pulses = counter.pulses + 1;
+    const uint32_t nowUs = micros();
+    auto& window = counter.window;
+    ++window.pulses;
+    if (counter.hasLastEdge) {
+        const uint32_t intervalUs = nowUs - counter.lastEdgeUs;
+        ++window.intervals;
+        window.spanUs += intervalUs;
+        counter.filter.add(intervalUs);
+        if (intervalUs < window.minUs) {
+            window.minUs = intervalUs;
+        }
+        if (intervalUs > window.maxUs) {
+            window.maxUs = intervalUs;
+        }
+        auto& trace = counter.trace;
+        if (trace.count > 0 && trace.count < TachTraceSize) {
+            trace.intervalsUs[trace.count++] = intervalUs;
+        } else if (trace.count == 0 && counter.recentCount == TachTraceBefore) {
+            const uint32_t previousUs = counter.recentUs[
+                (counter.recentNext + TachTraceBefore - 1) % TachTraceBefore];
+            // Trigger only: every edge still contributes to both RPM estimators.
+            if (uint64_t(intervalUs) * 4 < uint64_t(previousUs) * 3) {
+                for (size_t i = 0; i < TachTraceBefore; ++i) {
+                    trace.intervalsUs[i] = counter.recentUs[
+                        (counter.recentNext + i) % TachTraceBefore];
+                }
+                trace.intervalsUs[TachTraceBefore] = intervalUs;
+                trace.count = TachTraceBefore + 1;
+                trace.triggerUs = nowUs;
+                trace.referenceUs = previousUs;
+            }
+        }
+        counter.recentUs[counter.recentNext] = intervalUs;
+        counter.recentNext = (counter.recentNext + 1) % TachTraceBefore;
+        if (counter.recentCount < TachTraceBefore) {
+            ++counter.recentCount;
+        }
+    }
+    counter.lastEdgeUs = nowUs;
+    counter.hasLastEdge = true;
     portEXIT_CRITICAL_ISR(&counter.mux);
 }
 
@@ -76,6 +116,7 @@ void ThermalController::begin() {
         state.boosting = true;
         state.boostStarted = millis();
         pinMode(hardware::TachPins[fan], INPUT);
+        tach_[fan].windowStartedUs = micros();
         attachInterruptArg(hardware::TachPins[fan], tachInterrupt, &tach_[fan], FALLING);
     }
     analogReadResolution(12);
@@ -85,6 +126,10 @@ void ThermalController::begin() {
     }
     lastControl_ = millis();
     lastRpm_ = lastControl_;
+    if (hardware::TachDiagnosticsSerial) {
+        Serial.println("TACH,fan,window_us,pulses,intervals,min_us,max_us,span_us,"
+                       "rpm_count,rpm_period,rpm_display,pwm_pct");
+    }
 }
 
 void ThermalController::readSensors() {
@@ -127,15 +172,88 @@ void ThermalController::updateRpm(uint32_t now) {
     if (elapsed < hardware::RpmIntervalMs) {
         return;
     }
+    TachWindow windows[FanCount];
+    uint32_t windowUs[FanCount];
+    TachTrace traces[FanCount];
+    CorrectedPeriods corrected[FanCount];
+    float rawDisplayRpm[FanCount];
     for (size_t fan = 0; fan < FanCount; ++fan) {
         auto& counter = tach_[fan];
         portENTER_CRITICAL(&counter.mux);
-        const uint32_t pulses = counter.pulses;
-        counter.pulses = 0;
+        const uint32_t snapshotUs = micros();
+        windows[fan] = counter.window;
+        windowUs[fan] = snapshotUs - counter.windowStartedUs;
+        counter.window = {};
+        counter.windowStartedUs = snapshotUs;
+        corrected[fan] = counter.filter.window;
+        counter.filter.window = {};
+        if (counter.trace.count == TachTraceSize) {
+            traces[fan] = counter.trace;
+            counter.trace = {};
+        }
+        // Forget stale edges after an empty window, including across micros() wraps.
+        if (windows[fan].pulses == 0) {
+            counter.hasLastEdge = false;
+            counter.recentCount = 0;
+            counter.recentNext = 0;
+            counter.trace = {};
+            counter.filter = {};
+        }
         portEXIT_CRITICAL(&counter.mux);
-        fans_[fan].rpm = rpmFromPulses(pulses, elapsed, hardware::PulsesPerRevolution[fan]);
+        rawDisplayRpm[fan] = rpmFromPulses(
+            windows[fan].pulses, elapsed, hardware::PulsesPerRevolution[fan]);
+        const uint8_t ppr = hardware::PulsesPerRevolution[fan];
+        fans_[fan].rpm = corrected[fan].spanUs != 0 && ppr != 0
+            ? static_cast<float>(corrected[fan].intervals * 60000000.0 / corrected[fan].spanUs / ppr)
+            : rawDisplayRpm[fan];
     }
     lastRpm_ = now;
+    const uint64_t sequence = ++tachSequence_;
+    auto& snapshot = tachHistory_[(sequence - 1) % TachHistorySize];
+    snapshot.sequence = sequence;
+    snapshot.uptimeMs = now;
+    for (size_t fan = 0; fan < FanCount; ++fan) {
+        snapshot.fans[fan] = {
+            windows[fan], windowUs[fan], fans_[fan].rpm, fans_[fan].appliedDuty,
+            traces[fan], corrected[fan], rawDisplayRpm[fan]};
+    }
+    // Snapshot every fan before writing serial data, which may block.
+    if (hardware::TachDiagnosticsSerial) {
+        for (size_t fan = 0; fan < FanCount; ++fan) {
+            const auto& window = windows[fan];
+            const uint8_t pulsesPerRevolution = hardware::PulsesPerRevolution[fan];
+            char countRpm[24] = "NA";
+            char periodRpm[24] = "NA";
+            if (windowUs[fan] != 0 && pulsesPerRevolution != 0) {
+                std::snprintf(countRpm, sizeof(countRpm), "%.2f",
+                              window.pulses * 60000000.0 / windowUs[fan] / pulsesPerRevolution);
+            }
+            if (window.intervals != 0 && window.spanUs != 0 && pulsesPerRevolution != 0) {
+                std::snprintf(periodRpm, sizeof(periodRpm), "%.2f",
+                              window.intervals * 60000000.0 / window.spanUs / pulsesPerRevolution);
+            }
+            Serial.printf("TACH,%u,%lu,%lu,%lu,%lu,%lu,%llu,%s,%s,%.2f,%.2f\n",
+                          unsigned(fan + 1),
+                          static_cast<unsigned long>(windowUs[fan]),
+                          static_cast<unsigned long>(window.pulses),
+                          static_cast<unsigned long>(window.intervals),
+                          static_cast<unsigned long>(window.intervals == 0 ? 0 : window.minUs),
+                          static_cast<unsigned long>(window.maxUs),
+                          static_cast<unsigned long long>(window.spanUs),
+                          countRpm, periodRpm, double(fans_[fan].rpm),
+                          double(fans_[fan].appliedDuty));
+        }
+    }
+}
+
+const ThermalController::TachSnapshot* ThermalController::nextTachSnapshot(
+    uint64_t after, bool& dropped) const {
+    const uint64_t oldest = tachSequence_ < TachHistorySize ? 1 : tachSequence_ - TachHistorySize + 1;
+    dropped = after > tachSequence_ || (after < oldest - 1);
+    if (after >= tachSequence_ || dropped) {
+        return nullptr;
+    }
+    return &tachHistory_[after % TachHistorySize];
 }
 
 void ThermalController::update(uint32_t now, const Config& config) {

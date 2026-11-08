@@ -3,6 +3,7 @@
 #include <cstdio>
 #include <cstring>
 #include <limits>
+#include <utility>
 #include "CommandProcessor.h"
 #include "HardwareConfig.h"
 
@@ -109,7 +110,7 @@ void testCommandsRegulationAndStorage() {
     response = status(processor);
     assert(response["data"]["ble_available"] == true);
     assert(response["data"]["ble_status"] == "ready");
-    assert(response["data"]["firmware_version"] == "1.4.0");
+    assert(response["data"]["firmware_version"] == "1.4.5");
     assert(response["data"]["ble_rssi_dbm"].isNull());
     for (const int8_t rssi : {int8_t(-127), int8_t(-62), int8_t(0), int8_t(20)}) {
         const String wire = processor.process(R"({"cmd":"get_status"})", &rssi);
@@ -250,6 +251,380 @@ void testTimerWraparound() {
     assert(response["data"]["fans"][0]["applied_duty"].as<float>() < 100);
 }
 
+struct TachLog {
+    unsigned fan = 0;
+    unsigned long windowUs = 0;
+    unsigned long pulses = 0;
+    unsigned long intervals = 0;
+    unsigned long minUs = 0;
+    unsigned long maxUs = 0;
+    unsigned long long spanUs = 0;
+    char countRpm[24]{};
+    char periodRpm[24]{};
+    double displayRpm = 0;
+    double duty = 0;
+};
+
+TachLog tachLog(ThermalController& thermal, size_t fan) {
+    ConfigurationStore storage;
+    BleHealth health;
+    TestOta ota;
+    CommandProcessor processor(storage, thermal, health, ota);
+    char command[96];
+    std::snprintf(command, sizeof(command), "{\"cmd\":\"get_tach_diagnostics\",\"after\":%llu}",
+                  static_cast<unsigned long long>(thermal.tachSequence() - 1));
+    auto response = execute(processor, command);
+    assert(response["data"]["dropped"] == false);
+    assert(response["data"]["window"]["sequence"].as<uint64_t>() == thermal.tachSequence());
+    assert(response["data"]["window"]["fans"].size() == FanCount);
+    const JsonObject item = response["data"]["window"]["fans"][fan];
+    TachLog result;
+    result.fan = item["fan"];
+    result.windowUs = item["window_us"];
+    result.pulses = item["pulses"];
+    result.intervals = item["intervals"];
+    result.minUs = item["min_us"];
+    result.maxUs = item["max_us"];
+    result.spanUs = item["span_us"];
+    result.displayRpm = item["rpm_display"];
+    result.duty = item["pwm_pct"];
+    std::snprintf(result.countRpm, sizeof(result.countRpm), "%.2f", item["rpm_count"].as<double>());
+    if (item["rpm_period"].isNull()) {
+        std::snprintf(result.periodRpm, sizeof(result.periodRpm), "NA");
+    } else {
+        std::snprintf(result.periodRpm, sizeof(result.periodRpm), "%.2f", item["rpm_period"].as<double>());
+    }
+    assert(result.fan == fan + 1);
+    return result;
+}
+
+void tachEdge(size_t fan, uint32_t atUs) {
+    fake::microseconds = atUs;
+    const uint8_t pin = hardware::TachPins[fan];
+    fake::interrupts[pin](fake::interruptArguments[pin]);
+}
+
+void testTachDiagnostics() {
+    fake::now = 0;
+    fake::useMicroseconds = true;
+    fake::microseconds = 0;
+    fake::adc[33] = fake::adc[32] = 1650;
+    ThermalController thermal;
+    ConfigurationStore storage;
+    Serial.output.clear();
+    thermal.begin();
+    assert(Serial.output.find("TACH,") == std::string::npos);
+    Serial.output.clear();
+
+    for (uint32_t time = 25000; time <= 1000000; time += 25000) {
+        tachEdge(0, time);
+        if (time != 600000) {
+            tachEdge(1, time);
+        }
+        if (time == 400000) {
+            tachEdge(1, time + 1);
+        }
+    }
+    tachEdge(2, 0);
+    tachEdge(2, 1000000);
+    fake::microseconds = 1000500;
+    advance(thermal, storage, 1000);
+    auto log = tachLog(thermal, 0);
+    assert(log.windowUs == 1000500 && log.pulses == 40 && log.intervals == 39);
+    assert(log.minUs == 25000 && log.maxUs == 25000 && log.spanUs == 975000);
+    assert(std::strcmp(log.countRpm, "1199.40") == 0);
+    assert(std::strcmp(log.periodRpm, "1200.00") == 0);
+    assert(log.displayRpm == 1200);
+    assert(log.duty == thermal.status(storage.config()).fans[0].appliedDuty);
+    log = tachLog(thermal, 1);
+    assert(log.pulses == 40 && log.intervals == 39);
+    assert(log.minUs == 1 && log.maxUs == 50000 && log.spanUs == 975000);
+    log = tachLog(thermal, 2);
+    assert(log.pulses == 2 && log.intervals == 1 && log.minUs == 1000000);
+    assert(log.maxUs == 1000000 && log.spanUs == 1000000);
+    assert(std::strcmp(log.periodRpm, "30.00") == 0);
+    log = tachLog(thermal, 3);
+    assert(log.pulses == 0 && log.intervals == 0);
+    assert(log.minUs == 0 && log.maxUs == 0 && log.spanUs == 0);
+    assert(std::strcmp(log.countRpm, "0.00") == 0);
+    assert(std::strcmp(log.periodRpm, "NA") == 0);
+
+    Serial.output.clear();
+    for (uint32_t time = 1025000; time <= 2000000; time += 25000) {
+        tachEdge(0, time);
+    }
+    tachEdge(3, 1500000);
+    fake::microseconds = 2000000;
+    advance(thermal, storage, 2000);
+    log = tachLog(thermal, 0);
+    assert(log.windowUs == 999500 && log.pulses == 40 && log.intervals == 40);
+    assert(log.minUs == 25000 && log.maxUs == 25000 && log.spanUs == 1000000);
+    assert(std::strcmp(log.countRpm, "1200.60") == 0);
+    assert(std::strcmp(log.periodRpm, "1200.00") == 0);
+    log = tachLog(thermal, 3);
+    assert(log.pulses == 1 && log.intervals == 0);
+    assert(std::strcmp(log.periodRpm, "NA") == 0);
+
+    Serial.output.clear();
+    fake::microseconds = 3000000;
+    advance(thermal, storage, 3000);
+    log = tachLog(thermal, 0);
+    assert(log.pulses == 0 && log.intervals == 0 && log.spanUs == 0);
+    assert(log.displayRpm == 0 && std::strcmp(log.periodRpm, "NA") == 0);
+
+    Serial.output.clear();
+    tachEdge(0, 3100000);
+    tachEdge(0, 3125000);
+    fake::microseconds = 4000000;
+    advance(thermal, storage, 4000);
+    log = tachLog(thermal, 0);
+    assert(log.pulses == 2 && log.intervals == 1);
+    assert(log.minUs == 25000 && log.maxUs == 25000 && log.spanUs == 25000);
+    assert(log.displayRpm == 1200 && std::strcmp(log.periodRpm, "1200.00") == 0);
+    fake::useMicroseconds = false;
+}
+
+void testTachMicrosWraparound() {
+    fake::now = 0;
+    fake::useMicroseconds = true;
+    const uint32_t start = UINT32_MAX - 499999;
+    fake::microseconds = start;
+    ThermalController thermal;
+    ConfigurationStore storage;
+    thermal.begin();
+    Serial.output.clear();
+    for (uint32_t offset = 250000; offset <= 1000000; offset += 250000) {
+        tachEdge(0, start + offset);
+    }
+    fake::microseconds = start + 1000000;
+    advance(thermal, storage, 1000);
+    const auto log = tachLog(thermal, 0);
+    assert(log.windowUs == 1000000 && log.pulses == 4 && log.intervals == 3);
+    assert(log.minUs == 250000 && log.maxUs == 250000 && log.spanUs == 750000);
+    assert(std::strcmp(log.countRpm, "120.00") == 0);
+    assert(std::strcmp(log.periodRpm, "120.00") == 0);
+    fake::useMicroseconds = false;
+}
+
+void testTachBleHistory() {
+    fake::now = 0;
+    ThermalController thermal;
+    ConfigurationStore storage;
+    BleHealth health;
+    TestOta ota;
+    CommandProcessor processor(storage, thermal, health, ota);
+    thermal.begin();
+    assert(status(processor)["data"]["tach_diagnostics_supported"] == true);
+    auto reply = execute(processor, R"({"cmd":"get_tach_diagnostics"})");
+    assert(reply["data"]["latest_sequence"] == 0);
+    assert(reply["data"]["window"].isNull());
+    reply = execute(processor, R"({"cmd":"get_tach_diagnostics","after":0})");
+    assert(reply["data"]["window"].isNull() && reply["data"]["dropped"] == false);
+    for (uint32_t time = 1000; time <= 140000; time += 1000) {
+        advance(thermal, storage, time);
+    }
+    reply = execute(processor, R"({"cmd":"get_tach_diagnostics","after":1})");
+    assert(reply["data"]["dropped"] == true && reply["data"]["window"].isNull());
+    for (unsigned after = 12; after < 140; ++after) {
+        char command[96];
+        std::snprintf(command, sizeof(command), "{\"cmd\":\"get_tach_diagnostics\",\"after\":%u}", after);
+        reply = execute(processor, command);
+        assert(reply["data"]["latest_sequence"] == 140);
+        assert(reply["data"]["dropped"] == false);
+        assert(reply["data"]["window"]["sequence"] == after + 1);
+        assert(reply["data"]["window"]["uptime_ms"] == (after + 1) * 1000);
+        assert(reply["data"]["window"]["fans"][0]["rpm_count"] == 0);
+        assert(reply["data"]["window"]["fans"][0]["rpm_period"].isNull());
+    }
+    reply = execute(processor, R"({"cmd":"get_tach_diagnostics","after":140})");
+    assert(reply["data"]["dropped"] == false && reply["data"]["window"].isNull());
+    reply = execute(processor, R"({"cmd":"get_tach_diagnostics","after":141})");
+    assert(reply["data"]["dropped"] == true && reply["data"]["window"].isNull());
+    for (const char* command : {
+        R"({"cmd":"get_tach_diagnostics","after":-1})",
+        R"({"cmd":"get_tach_diagnostics","after":1.5})",
+        R"({"cmd":"get_tach_diagnostics","after":null})",
+        R"({"cmd":"get_tach_diagnostics","after":"1"})"}) {
+        assert(execute(processor, command, false)["error"] == "invalid_tach_cursor");
+    }
+}
+
+void testTachAnomalyTrace() {
+    fake::now = 0;
+    fake::useMicroseconds = true;
+    fake::microseconds = 0;
+    ThermalController thermal;
+    ConfigurationStore storage;
+    BleHealth health;
+    TestOta ota;
+    CommandProcessor processor(storage, thermal, health, ota);
+    thermal.begin();
+    tachEdge(0, 850000);
+    for (uint32_t time = 875000; time <= 975000; time += 25000) {
+        tachEdge(0, time);
+    }
+    tachEdge(0, 987500);
+    fake::microseconds = 1000000;
+    advance(thermal, storage, 1000);
+    auto reply = execute(processor, R"({"cmd":"get_tach_diagnostics","after":0})");
+    assert(reply["data"]["window"]["fans"][0]["trace_us"].isNull());
+    assert(reply["data"]["window"]["fans"][0]["pulses"] == 7);
+    for (uint32_t time = 1000000; time <= 1075000; time += 25000) {
+        tachEdge(0, time);
+    }
+    // A later anomaly must not overwrite the first completed trace before snapshot.
+    tachEdge(0, 1087500);
+    tachEdge(0, 1100000);
+    fake::microseconds = 2000000;
+    advance(thermal, storage, 2000);
+    reply = execute(processor, R"({"cmd":"get_tach_diagnostics","after":1})");
+    JsonObject fan = reply["data"]["window"]["fans"][0];
+    assert(fan["pulses"] == 6 && fan["intervals"] == 6);
+    assert(fan["trace_trigger_us"] == 987500);
+    assert(fan["trace_reference_us"] == 25000);
+    const uint32_t expected[] = {25000, 25000, 25000, 25000, 12500, 12500, 25000, 25000, 25000};
+    assert(fan["trace_us"].size() == ThermalController::TachTraceSize);
+    for (size_t i = 0; i < ThermalController::TachTraceSize; ++i) {
+        assert(fan["trace_us"][i] == expected[i]);
+    }
+    assert(fan["trace_us"][4].as<uint32_t>() + fan["trace_us"][5].as<uint32_t>() ==
+           fan["trace_reference_us"].as<uint32_t>());
+    assert(fan["merged_pairs"] == 1);
+    assert(fan["corrected_intervals"] == 4);
+    assert(fan["corrected_span_us"] == 100000);
+    assert(fan["rpm_raw_display"] == 180);
+    assert(fan["rpm_corrected"] == 1200);
+    assert(fan["rpm_display"] == fan["rpm_corrected"]);
+    const String repeated = processor.process(R"({"cmd":"get_tach_diagnostics","after":1})");
+    assert(!deserializeJson(reply, repeated));
+    assert(reply["data"]["window"]["fans"][0]["trace_trigger_us"] == 987500);
+
+    fake::microseconds = 3000000;
+    advance(thermal, storage, 3000);
+    for (uint32_t time = 3100000; time <= 3300000; time += 25000) {
+        tachEdge(0, time);
+    }
+    fake::microseconds = 4000000;
+    advance(thermal, storage, 4000);
+    reply = execute(processor, R"({"cmd":"get_tach_diagnostics","after":3})");
+    assert(reply["data"]["window"]["fans"][0]["trace_us"].isNull());
+    fake::useMicroseconds = false;
+}
+
+void testTachTraceWraparoundAndThreshold() {
+    fake::now = 0;
+    fake::useMicroseconds = true;
+    const uint32_t start = UINT32_MAX - 109999;
+    fake::microseconds = start;
+    ThermalController thermal;
+    ConfigurationStore storage;
+    BleHealth health;
+    TestOta ota;
+    CommandProcessor processor(storage, thermal, health, ota);
+    thermal.begin();
+    for (uint32_t offset = 0; offset <= 100000; offset += 25000) {
+        tachEdge(0, start + offset);
+        tachEdge(1, start + offset);
+    }
+    for (uint32_t offset : {112500U, 125000U, 150000U, 175000U, 200000U}) {
+        tachEdge(0, start + offset);
+    }
+    // Exactly 75% does not trigger; no zero/absent timestamp sentinel is used.
+    tachEdge(1, start + 118750);
+    for (uint32_t offset : {143750U, 168750U, 193750U, 218750U}) {
+        tachEdge(1, start + offset);
+    }
+    fake::microseconds = start + 1000000;
+    advance(thermal, storage, 1000);
+    auto reply = execute(processor, R"({"cmd":"get_tach_diagnostics","after":0})");
+    auto fan = reply["data"]["window"]["fans"][0];
+    assert(fan["trace_trigger_us"].as<uint32_t>() == start + 112500);
+    assert(fan["trace_us"][4] == 12500 && fan["trace_us"][5] == 12500);
+    assert(reply["data"]["window"]["fans"][1]["trace_us"].isNull());
+    assert(fan["pulses"] == 10);
+    fake::useMicroseconds = false;
+}
+
+void testCorrectedPeriods() {
+    using Filter = ThermalController::PeriodFilter;
+    Filter clean;
+    for (unsigned i = 0; i < 40; ++i) {
+        clean.add(25000);
+    }
+    assert(clean.window.intervals == 40 && clean.window.spanUs == 1000000);
+    assert(clean.window.mergedPairs == 0);
+
+    Filter split;
+    for (unsigned i = 0; i < 6; ++i) {
+        split.add(25000);
+    }
+    split.window = {};
+    split.add(12500);
+    assert(split.window.intervals == 0);
+    split.add(12500);
+    assert(split.window.intervals == 0);
+    split.window = {};
+    split.add(25000);
+    assert(split.window.mergedPairs == 1 && split.window.intervals == 2);
+    assert(split.window.spanUs == 50000);
+
+    Filter acceleration;
+    for (unsigned i = 0; i < 6; ++i) {
+        acceleration.add(25000);
+    }
+    acceleration.window = {};
+    for (unsigned i = 0; i < 20; ++i) {
+        acceleration.add(12500);
+    }
+    assert(acceleration.window.mergedPairs == 0);
+    assert(acceleration.window.intervals == 20 && acceleration.window.spanUs == 250000);
+
+    Filter unrelated;
+    for (unsigned i = 0; i < 6; ++i) {
+        unrelated.add(25000);
+    }
+    unrelated.window = {};
+    unrelated.add(8000);
+    unrelated.add(8000);
+    unrelated.add(25000);
+    assert(unrelated.window.mergedPairs == 0 && unrelated.window.intervals == 3);
+    assert(unrelated.window.spanUs == 41000);
+
+    Filter uneven;
+    for (unsigned i = 0; i < 40; ++i) {
+        uneven.add(i % 2 == 0 ? 15000 : 25000);
+    }
+    assert(uneven.window.mergedPairs == 0 && uneven.window.intervals == 40);
+    assert(uneven.window.spanUs == 800000);
+
+    Filter threshold;
+    for (unsigned i = 0; i < 6; ++i) {
+        threshold.add(24000);
+    }
+    threshold.window = {};
+    threshold.add(18000);
+    threshold.add(6000);
+    threshold.add(24000);
+    assert(threshold.window.mergedPairs == 0);
+    assert(threshold.window.intervals == 3 && threshold.window.spanUs == 48000);
+
+    // Recorded pairs from the 2026-11-08 capture, including unequal rotor periods.
+    for (const auto& pair : {std::pair<uint32_t, uint32_t>{13502, 12908},
+                             {13105, 13018}, {19639, 18854}, {20045, 19399}}) {
+        Filter recorded;
+        const uint32_t baseline = pair.first < 15000 ? 26300 : 39000;
+        for (unsigned i = 0; i < 6; ++i) {
+            recorded.add(baseline);
+        }
+        recorded.window = {};
+        recorded.add(pair.first);
+        recorded.add(pair.second);
+        recorded.add(baseline);
+        assert(recorded.window.mergedPairs == 1 && recorded.window.intervals == 2);
+        assert(recorded.window.spanUs == uint64_t(pair.first) + pair.second + baseline);
+    }
+}
+
 void testOtaCommandsAndPacketValidation() {
     ConfigurationStore storage;
     ThermalController thermal;
@@ -326,6 +701,12 @@ void testOtaCommandsAndPacketValidation() {
 int main() {
     testCommandsRegulationAndStorage();
     testTimerWraparound();
+    testTachDiagnostics();
+    testTachMicrosWraparound();
+    testTachBleHistory();
+    testTachAnomalyTrace();
+    testTachTraceWraparoundAndThreshold();
+    testCorrectedPeriods();
     testOtaCommandsAndPacketValidation();
-    std::puts("PASS: class integration, BLE JSON v1, OTA state/packet validation, PWM/NTC/TACH, NVS, timer wraparound");
+    std::puts("PASS: class integration, BLE JSON v1, OTA state/packet validation, PWM/NTC/TACH diagnostics, NVS, timer wraparound");
 }

@@ -19,6 +19,7 @@ public sealed partial class MainWindow : Window
     private bool _isFrench;
     private bool _shutdownStarted, _shutdownComplete;
     private bool _firmwarePicking;
+    private bool _tachPicking;
     private readonly LanguagePreferences _languagePreferences = new(
         Path.Combine(DesktopServices.DataDirectory, "language.txt"));
 
@@ -186,6 +187,44 @@ public sealed partial class MainWindow : Window
     }
 
     private void FirmwareCancelClicked(object sender, RoutedEventArgs args) => _viewModel.CancelFirmwareUpdate();
+
+    private async void TachCapture30Clicked(object sender, RoutedEventArgs args)
+    {
+        try
+        {
+            await _viewModel.CaptureTachAsync(30);
+        }
+        catch (Exception ex) { _viewModel.ReportError(ex); }
+    }
+
+    private async void TachCapture60Clicked(object sender, RoutedEventArgs args)
+    {
+        try
+        {
+            await _viewModel.CaptureTachAsync(60);
+        }
+        catch (Exception ex) { _viewModel.ReportError(ex); }
+    }
+
+    private void TachCancelClicked(object sender, RoutedEventArgs args) => _viewModel.CancelTachCapture();
+
+    private async void TachExportClicked(object sender, RoutedEventArgs args)
+    {
+        if (_tachPicking || !_viewModel.CanExportTach)
+            return;
+        _tachPicking = true;
+        try
+        {
+            var picker = new FileSavePicker { SuggestedFileName = $"tach-{DateTime.Now:yyyyMMdd-HHmmss}" };
+            WinRT.Interop.InitializeWithWindow.Initialize(picker, WinRT.Interop.WindowNative.GetWindowHandle(this));
+            picker.FileTypeChoices.Add("CSV", new List<string> { ".csv" });
+            var file = await picker.PickSaveFileAsync();
+            if (file is not null && !_shutdownStarted && _viewModel.CanExportTach)
+                await _viewModel.ExportTachAsync(file.Path);
+        }
+        catch (Exception ex) { _viewModel.ReportError(ex); }
+        finally { _tachPicking = false; }
+    }
 
     private Task<bool> ConfirmFirmwareActivationAsync(CancellationToken ct)
     {

@@ -49,8 +49,10 @@ public sealed record FanStatus(int Fan, int Sensor, string Mode, double FixedDut
 /// <param name="Fans">The four fan readings.</param>
 /// <param name="FirmwareVersion">The version, absent in older firmware.</param>
 /// <param name="BleRssiDbm">RSSI received by the ESP32, or null if unsupported/unavailable.</param>
+/// <param name="TachDiagnosticsSupported">Whether window diagnostics can be read over BLE.</param>
 public sealed record Telemetry(uint UptimeMs, bool Dirty, string Storage, bool StorageAvailable,
-    SensorStatus[] Sensors, FanStatus[] Fans, string? FirmwareVersion = null, int? BleRssiDbm = null);
+    SensorStatus[] Sensors, FanStatus[] Fans, string? FirmwareVersion = null, int? BleRssiDbm = null,
+    bool TachDiagnosticsSupported = false);
 
 /// <summary>Remote RAM configuration and its persistence state.</summary>
 /// <param name="Configuration">The actual settings read from the controller.</param>

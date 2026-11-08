@@ -1,6 +1,7 @@
 #include "CommandProcessor.h"
 #include "ConfigJson.h"
 #include "FirmwareVersion.h"
+#include "HardwareConfig.h"
 
 namespace controller {
 namespace {
@@ -90,6 +91,7 @@ bool CommandProcessor::otaRestartDue(uint32_t now) const {
 
 void CommandProcessor::writeStatus(JsonObject data, const int8_t* rssi) const {
     data["firmware_version"] = FirmwareVersion;
+    data["tach_diagnostics_supported"] = true;
     if (rssi != nullptr) {
         data["ble_rssi_dbm"] = *rssi;
     } else {
@@ -207,6 +209,64 @@ String CommandProcessor::process(const String& command, const int8_t* rssi, bool
         response["storage"] = storage_.state();
     } else if (strcmp(cmd, "get_status") == 0) {
         writeStatus(response["data"].to<JsonObject>(), rssi);
+    } else if (strcmp(cmd, "get_tach_diagnostics") == 0) {
+        if (!request["after"].isUnbound() && !request["after"].is<uint64_t>()) {
+            return errorResponse("invalid_tach_cursor", "after must be an unsigned sequence number");
+        }
+        JsonObject data = response["data"].to<JsonObject>();
+        data["latest_sequence"] = thermal_.tachSequence();
+        bool dropped = false;
+        const auto* snapshot = !request["after"].isUnbound()
+            ? thermal_.nextTachSnapshot(request["after"].as<uint64_t>(), dropped) : nullptr;
+        data["dropped"] = dropped;
+        if (snapshot == nullptr) {
+            data["window"] = nullptr;
+        } else {
+            JsonObject window = data["window"].to<JsonObject>();
+            window["sequence"] = snapshot->sequence;
+            window["uptime_ms"] = snapshot->uptimeMs;
+            JsonArray fans = window["fans"].to<JsonArray>();
+            for (size_t fan = 0; fan < FanCount; ++fan) {
+                const auto& reading = snapshot->fans[fan];
+                const auto& edges = reading.edges;
+                const uint8_t ppr = hardware::PulsesPerRevolution[fan];
+                JsonObject item = fans.add<JsonObject>();
+                item["fan"] = fan + 1;
+                item["window_us"] = reading.windowUs;
+                item["pulses"] = edges.pulses;
+                item["intervals"] = edges.intervals;
+                item["min_us"] = edges.intervals == 0 ? 0 : edges.minUs;
+                item["max_us"] = edges.maxUs;
+                item["span_us"] = edges.spanUs;
+                item["rpm_count"] = nullptr;
+                item["rpm_period"] = nullptr;
+                if (reading.windowUs != 0 && ppr != 0) {
+                    item["rpm_count"] = edges.pulses * 60000000.0 / reading.windowUs / ppr;
+                }
+                if (edges.intervals != 0 && edges.spanUs != 0 && ppr != 0) {
+                    item["rpm_period"] = edges.intervals * 60000000.0 / edges.spanUs / ppr;
+                }
+                item["rpm_display"] = reading.displayRpm;
+                item["pwm_pct"] = reading.duty;
+                item["rpm_raw_display"] = reading.rawDisplayRpm;
+                item["corrected_intervals"] = reading.corrected.intervals;
+                item["corrected_span_us"] = reading.corrected.spanUs;
+                item["merged_pairs"] = reading.corrected.mergedPairs;
+                item["rpm_corrected"] = nullptr;
+                if (reading.corrected.spanUs != 0 && ppr != 0) {
+                    item["rpm_corrected"] = reading.corrected.intervals * 60000000.0 /
+                                            reading.corrected.spanUs / ppr;
+                }
+                if (reading.trace.count == ThermalController::TachTraceSize) {
+                    item["trace_trigger_us"] = reading.trace.triggerUs;
+                    item["trace_reference_us"] = reading.trace.referenceUs;
+                    JsonArray intervals = item["trace_us"].to<JsonArray>();
+                    for (const uint32_t interval : reading.trace.intervalsUs) {
+                        intervals.add(interval);
+                    }
+                }
+            }
+        }
     } else if (strcmp(cmd, "set_profile") == 0) {
         size_t sensor;
         Profile profile{};
@@ -240,7 +300,7 @@ String CommandProcessor::process(const String& command, const int8_t* rssi, bool
     } else if (strcmp(cmd, "defaults") == 0) {
         storage_.replace(defaults());
     } else {
-        return errorResponse("unknown_command", "Use get_config, get_status, set_profile, set_fan, save or defaults");
+        return errorResponse("unknown_command", "Use get_config, get_status, get_tach_diagnostics, set_profile, set_fan, save or defaults");
     }
     response["dirty"] = storage_.dirty();
     return encode(response);

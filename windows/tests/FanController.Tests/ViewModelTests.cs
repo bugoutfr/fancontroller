@@ -12,6 +12,107 @@ internal sealed class InlineDispatcher : IUiDispatcher
 
 public sealed class ViewModelTests : IDisposable
 {
+    private static async Task ConnectTachModel(MainViewModel model, FakeTransport transport, bool supported)
+    {
+        model.SelectedDevice = new(new(42, "Test", -50));
+        var connecting = model.ConnectCommand.ExecuteAsync();
+        await transport.NextAsync();
+        ControllerTestData.ReplyConfig(transport);
+        await transport.NextAsync();
+        transport.Reply(System.Text.Json.JsonSerializer.Serialize(new
+        {
+            ok = true,
+            cmd = "get_status",
+            data = ControllerTestData.Status with
+            {
+                TachDiagnosticsSupported = supported
+            }
+        }, WireJson.Options));
+        await connecting;
+    }
+
+    [Fact]
+    public async Task OldFirmwareDisablesCaptureWithoutSendingUnsupportedCommands()
+    {
+        var transport = new FakeTransport();
+        var errors = new List<Exception>();
+        await using var model = Create(() => transport, new TestHistoryStore(), errors);
+        await ConnectTachModel(model, transport, false);
+        Assert.False(model.TachSupported);
+        Assert.False(model.CanCaptureTach);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => model.CaptureTachAsync(30));
+        Assert.Equal(new[] { "get_config", "get_status" }, transport.Names);
+        Assert.Empty(errors);
+    }
+
+    [Fact]
+    public async Task FailedCaptureReportsErrorAndCannotExportPartialData()
+    {
+        var transport = new FakeTransport();
+        var errors = new List<Exception>();
+        await using var model = Create(() => transport, new TestHistoryStore(), errors);
+        await ConnectTachModel(model, transport, true);
+        var capture = model.CaptureTachAsync(60);
+        await transport.NextAsync();
+        TachDiagnosticsTests.Reply(transport, 10);
+        await transport.NextAsync();
+        TachDiagnosticsTests.Reply(transport, 20, dropped: true);
+        await capture;
+        Assert.False(model.TachCapturing);
+        Assert.False(model.CanExportTach);
+        Assert.False(model.Connected);
+        Assert.IsType<InvalidDataException>(errors.Last());
+        Assert.NotEmpty(model.Error);
+    }
+
+    [Fact]
+    public async Task ShutdownCancelsAndAwaitsCaptureBeforeReleasingHistory()
+    {
+        var transport = new FakeTransport();
+        var store = new TestHistoryStore();
+        var model = Create(() => transport, store, new List<Exception>());
+        await ConnectTachModel(model, transport, true);
+        var capture = model.CaptureTachAsync(30);
+        await transport.NextAsync();
+        await model.DisposeAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.True(capture.IsCompletedSuccessfully);
+        Assert.True(transport.Disposed);
+        Assert.True(store.Disposed);
+        Assert.False(model.CanExportTach);
+        Assert.False(model.TachCapturing);
+    }
+
+    [Fact]
+    public async Task TachCaptureRequiresCapabilityAndExportsOnlyCompleteCaptures()
+    {
+        var transport = new FakeTransport();
+        var errors = new List<Exception>();
+        await using var model = Create(() => transport, new TestHistoryStore(), errors);
+        await ConnectTachModel(model, transport, true);
+        Assert.True(model.CanCaptureTach);
+        Assert.False(model.CanExportTach);
+        var capturing = model.CaptureTachAsync(30);
+        Assert.True(model.TachCapturing);
+        Assert.False(model.CanEdit);
+        Assert.False(model.CanUpdateFirmware);
+        Assert.False(model.CanExportTach);
+        await TachDiagnosticsTests.CompleteCapture(transport, 30);
+        await capturing;
+        Assert.False(model.TachCapturing);
+        Assert.True(model.CanEdit);
+        Assert.True(model.CanExportTach);
+        var path = Path.Combine(_directory, "tach.csv");
+        await model.ExportTachAsync(path);
+        Assert.Equal(121, File.ReadLines(path).Count());
+        Assert.Empty(errors);
+        var secondCapture = model.CaptureTachAsync(60);
+        await transport.NextAsync();
+        Assert.False(model.CanExportTach);
+        model.CancelTachCapture();
+        await secondCapture;
+        Assert.False(model.CanExportTach);
+    }
+
     private sealed class StartupSettings : IStartupSettings
     {
         internal bool Value

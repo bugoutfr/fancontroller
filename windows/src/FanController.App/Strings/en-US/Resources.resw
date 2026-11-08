@@ -1,5 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
 <root>
+  <data name="TachHeading.Text" xml:space="preserve"><value>TACH diagnostics over Bluetooth</value></data>
+  <data name="TachCapture30.Content" xml:space="preserve"><value>Capture 30 s</value></data>
+  <data name="TachCapture60.Content" xml:space="preserve"><value>Capture 60 s</value></data>
+  <data name="TachCancel.Content" xml:space="preserve"><value>Cancel capture</value></data>
+  <data name="TachExport.Content" xml:space="preserve"><value>Export CSV</value></data>
+  <data name="TachSeconds.Text" xml:space="preserve"><value>seconds captured</value></data>
+  <data name="Tach.Initial" xml:space="preserve"><value>Requires diagnostic firmware. Capture at stable fixed PWM; normal readings pause during capture.</value></data>
+  <data name="Tach.Capturing" xml:space="preserve"><value>Capturing all four fans over Bluetooth. Normal readings are paused.</value></data>
+  <data name="Tach.Complete" xml:space="preserve"><value>Capture complete. Export CSV to save and inspect the measurements.</value></data>
+  <data name="Tach.Canceled" xml:space="preserve"><value>Capture canceled; no partial capture is exported.</value></data>
+  <data name="Tach.Failed" xml:space="preserve"><value>Capture failed; no partial capture is exported. Check the connection and firmware.</value></data>
   <data name="OtaHeading.Text" xml:space="preserve"><value>Firmware update over Bluetooth</value></data>
   <data name="OtaWarning.Text" xml:space="preserve"><value>Select a trusted application .bin file, not a merged flash image. Save settings first: unsaved RAM changes will be lost on restart. SHA-256 checks integrity, not the publisher. Keep the controller powered.</value></data>
   <data name="OtaSelect.Content" xml:space="preserve"><value>Select firmware .bin</value></data>

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <array>
+#include <cassert>
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
@@ -67,6 +68,8 @@ private:
 namespace fake {
 
 inline uint32_t now = 0;
+inline uint32_t microseconds = 0;
+inline bool useMicroseconds = false;
 inline std::array<uint32_t, 40> adc{};
 inline std::array<uint32_t, 40> pwm{};
 inline std::array<int, 40> levels{};
@@ -78,13 +81,23 @@ inline int buttonLevel = HIGH;
 }  // namespace fake
 
 struct FakeSerial {
-    void println(const char*) {}
+    std::string output;
+    void println(const char* text) { output += std::string(text) + '\n'; }
     template <typename... Args>
-    void printf(const char*, Args...) {}
+    void printf(const char* format, Args... args) {
+        const int length = std::snprintf(nullptr, 0, format, args...);
+        assert(length >= 0);
+        std::string buffer(static_cast<size_t>(length) + 1, '\0');
+        std::snprintf(buffer.data(), buffer.size(), format, args...);
+        output.append(buffer.data(), static_cast<size_t>(length));
+    }
 };
 
 inline FakeSerial Serial;
 inline uint32_t millis() { return fake::now; }
+inline uint32_t micros() {
+    return fake::useMicroseconds ? fake::microseconds : fake::now * 1000U;
+}
 inline void pinMode(uint8_t, int) {}
 inline int digitalRead(uint8_t) { return fake::buttonLevel; }
 inline void digitalWrite(uint8_t pin, int value) { fake::levels.at(pin) = value; }

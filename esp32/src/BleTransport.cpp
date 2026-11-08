@@ -1,5 +1,6 @@
 #include "BleTransport.h"
 #include <algorithm>
+#include <cstring>
 #include <nimble/nimble/host/include/host/ble_gap.h>
 
 namespace controller {
@@ -166,7 +167,7 @@ void BleTransport::begin() {
     }
     NimBLECharacteristic* rx = service->createCharacteristic(
         RxUuid, NIMBLE_PROPERTY::WRITE | NIMBLE_PROPERTY::WRITE_ENC, 512);
-    tx_ = service->createCharacteristic(TxUuid, NIMBLE_PROPERTY::NOTIFY, 20);
+    tx_ = service->createCharacteristic(TxUuid, NIMBLE_PROPERTY::NOTIFY, MaxNotificationBytes);
     ota_ = service->createCharacteristic(
         OtaUuid,
         NIMBLE_PROPERTY::WRITE | NIMBLE_PROPERTY::WRITE_NR | NIMBLE_PROPERTY::WRITE_ENC | NIMBLE_PROPERTY::NOTIFY,
@@ -224,8 +225,21 @@ void BleTransport::sendNextChunk(uint32_t now) {
     if (now - lastTx_ < 20) {
         return;
     }
-    const size_t length = std::min(size_t(20), output_.length() - outputOffset_);
+    const uint16_t mtu = server_->getPeerMTU(handle);
+    if (mtu < 23) {
+        disconnectWithError("invalid peer MTU; response cannot be sent", handle);
+        return;
+    }
+    const size_t payload = std::min(size_t(mtu - 3), size_t(MaxNotificationBytes));
+    const size_t length = std::min(payload, output_.length() - outputOffset_);
     tx_->setValue(reinterpret_cast<const uint8_t*>(output_.c_str() + outputOffset_), length);
+    const auto& value = tx_->getValue();
+    if (value.size() != length ||
+        std::memcmp(value.data(), output_.c_str() + outputOffset_, length) != 0) {
+        output_ = "";
+        disconnectWithError("TX value update failed; response incomplete", handle);
+        return;
+    }
     if (!tx_->notify(handle)) {
         output_ = "";
         disconnectWithError("notification failed; response incomplete", handle);

@@ -47,6 +47,112 @@ See the [wiring diagram PNG](docs/schema-electrique.png) or [SVG](docs/schema-el
 - Electrical sensor faults: ≤50 mV is `short_circuit`; ≥3,050 mV is `open_circuit`; calculated temperatures outside −20…120 °C are `out_of_range`. Faulted sensors report a null temperature.
 - There is no RPM closed-loop control or automatic recovery when TACH reports zero. Hardware faults, power loss, or MCU reset can still interrupt cooling; use independent thermal protection where required.
 
+## TACH diagnostics
+
+Firmware **1.4.5** fixes a regression in 1.4.4: UART TX storage was still limited to
+20 bytes while notification chunks used the negotiated MTU. TX capacity and chunk limits
+now share a 512-byte constant, and the stored bytes are checked before notification.
+Version 1.4.4 can time out on initial configuration reads; this is not a pairing failure.
+
+Since firmware **1.4.1**, diagnostics are available over the existing encrypted BLE connection, without USB. In the
+updated Windows app's Dashboard, select **Capture 30 s** or **Capture 60 s**, then **Export CSV**.
+Install this firmware using the existing OTA workflow if USB power isolation is unknown.
+Do not connect powered USB and VIN simultaneously unless the board's isolation is confirmed.
+
+Firmware 1.4.4 retains the last 128 complete snapshots in RAM, approximately one per second
+(earlier diagnostic versions retained eight). UART notifications use the negotiated ATT MTU
+minus three bytes, capped at 512 bytes, with the existing 20 ms pacing. This prevents enlarged
+diagnostic responses from outrunning the history buffer on typical negotiated MTUs; the
+larger history also accommodates slower minimum-MTU transfers for a 60-second capture.
+`get_status` advertises `tach_diagnostics_supported: true`. Send
+`{"cmd":"get_tach_diagnostics"}` to obtain `data.latest_sequence` without historical data.
+Then send `{"cmd":"get_tach_diagnostics","after":N}` to read the next retained window.
+The response contains `latest_sequence`, `dropped`, and `window` (null when no new window exists).
+Each window has `sequence`, `uptime_ms`, and four `fans` entries with the fields below.
+If the cursor is too old or ahead of the current sequence, `dropped` is true and the client
+must fail the capture rather than silently export incomplete data. Reads do not clear history.
+
+`TachDiagnosticsSerial` in [HardwareConfig.h](include/HardwareConfig.h) optionally enables
+the same measurements on serial at 115200 baud; it is **disabled by default**.
+When enabled, each update emits one line per fan:
+
+```text
+TACH,fan,window_us,pulses,intervals,min_us,max_us,span_us,rpm_count,rpm_period,rpm_display,pwm_pct
+TACH,1,1000500,40,39,25000,25000,975000,1199.40,1200.00,1200.00,45.00
+```
+
+- `window_us`: measured time between counter snapshots, timestamped with `micros()` inside
+  the same critical section as the counter reset. Each fan has its own window.
+- `pulses`: all falling edges in that window. No debounce, rejection, or smoothing is applied.
+- `intervals`: number of complete falling-edge-to-falling-edge intervals ending in the window.
+  The first edge after startup only establishes a timestamp. The previous edge is retained
+  across window boundaries, but forgotten after an empty window to avoid stale restart periods.
+- `min_us`, `max_us`, `span_us`: shortest, longest, and sum of these intervals, in microseconds.
+  Min/max are zero when `intervals` is zero.
+- `rpm_count`: `pulses * 60000000 / window_us / pulses_per_revolution`.
+- `rpm_period`: `intervals * 60000000 / span_us / pulses_per_revolution`. This averages over
+  all measured periods, including anomalies; it is **not** a filtered or noise-immune RPM.
+  `NA` in CSV (JSON null over BLE) means no usable period, not a measured zero speed. A single edge can produce a period
+  if a previous edge is available from the preceding window.
+- `rpm_display`: existing millisecond-window calculation used by BLE and the Windows app,
+  used until 1.4.2; starting in 1.4.3 this field contains the corrected dashboard RPM.
+  `rpm_raw_display` retains the original millisecond calculation. `pwm_pct` is the applied duty, including startup boost/safety override.
+  RPM fields use `NA` if their denominator is unavailable or invalid.
+
+All fan counters are snapshotted before serial output, and no formatting or logging runs
+inside an interrupt. Set `TachDiagnosticsSerial` to `false` and rebuild to disable serial
+output; edge timing and BLE history still run. This instrumentation adds interrupt work,
+BLE transfers can affect scheduling, and optional serial output can delay the main loop,
+so it is a diagnostic tool, not a hardware waveform capture.
+
+Firmware **1.4.2** adds optional anomaly traces to each BLE fan entry. After four prior
+intervals are available, an interval **strictly shorter than 75% of the preceding interval**
+triggers capture of nine consecutive intervals: four before, the trigger at zero-based index
+4, and four after. `trace_us` contains these durations in microseconds, `trace_trigger_us`
+is the triggering edge's wrapping 32-bit microsecond timestamp, and `trace_reference_us`
+is the immediately preceding duration (index 3). All three fields are absent without a
+complete trace. This is a relative trigger, not a classification of electrical noise.
+
+Capture can span RPM window boundaries; the trace is attached to the window in which it is
+copied after completion, not necessarily the triggering window. Only the first complete trace
+per fan between snapshots is retained; later anomalies still count in RPM/min/max but do not
+overwrite it. An empty window clears preceding intervals and abandons an incomplete trace.
+Retrieving a retained snapshot again returns the same trace. Serial diagnostic rows remain
+unchanged; use the updated Windows app's CSV export to obtain the additional trace fields.
+
+Compare indices 4 and 5 and their sum with indices 0-3 and 6-8. Two short intervals whose sum
+matches the normal period support the extra-edge hypothesis. No short or zero interval is
+rejected. A trace is not a waveform and cannot distinguish signal faults from ISR timing
+effects or all variations in fan-generated pulse spacing.
+
+Firmware **1.4.3** uses reconstructed-period RPM for BLE status and therefore the dashboard
+and RPM history. The raw `pulses`, `intervals`, `span_us`, `rpm_count`, `rpm_period`, and
+anomaly traces are unchanged. Added diagnostic fields are `corrected_intervals`,
+`corrected_span_us`, `merged_pairs`, `rpm_corrected`, and `rpm_raw_display`.
+
+The reference is the median of five resolved periods; all five must be within +/-10% of
+that reference. Two consecutive intervals are merged only if each is strictly below 75%
+of the reference, their sum is within +/-10%, and the next interval also returns within
++/-10% of the reference. Otherwise both intervals are kept separately. This guards against
+sustained acceleration being mistaken for added edges. Candidates and their confirmation
+can cross update windows; up to two intervals remain pending until the next edge. Resolved
+periods are attributed to their resolution window, so their count need not match raw
+interval count in that window. An empty raw window resets the reference and pending state.
+
+Displayed RPM averages the resolved periods' durations, without a moving-average display
+filter. When no nonzero resolved duration is available (startup, no edges, or pending data),
+the original counting estimate is used; `rpm_corrected` is null, making that fallback
+explicit in diagnostics. This heuristic can still misclassify a brief real speed excursion
+or unusual rotor pulse spacing. It does not repair the electrical signal or PWM control.
+
+For comparison, use a fixed PWM duty and wait for startup boost and motor transients to finish.
+At 1200 RPM with two pulses/revolution, the average interval is 25000 us. Very short intervals
+suggest extra edges; intervals near twice the normal period suggest missing edges. Neither is
+proof of an electrical fault: rotor pulse spacing, real speed changes, and interrupt latency
+also affect timings. Both estimators use the same edges and can agree even with a bad signal;
+extra and missing pulses can cancel in the averages. With no oscilloscope, capture 30-60 seconds
+of these lines at a stable duty and compare all fans. Do not disconnect cooling during a test.
+
 ## Persistent settings
 
 Commands change the active RAM configuration. `save` writes both profiles and all four fan modes/duties to one NVS key and verifies the saved data. `defaults` changes RAM only; issue `save` to persist it. No flash writes occur during regular measurement or ordinary setting changes.
@@ -66,7 +172,7 @@ Advertised name: `ESP32-FanController`; one client at a time.
 
 Subscribe to TX before writing RX. Send UTF-8 JSON terminated by LF; CRLF is accepted. The maximum frame is 1,024 bytes. Fragment writes into 20-byte chunks for minimum-MTU compatibility. Wait for the complete LF-terminated response before sending the next command; only one request may be in flight. Notifications are byte fragments, not complete messages. Poll `get_status` after each response, typically every two seconds. On reconnect, subscribe again and reread configuration and status because a write may have executed before its response was lost.
 
-Supported commands: `get_config`, `get_status`, `set_profile`, `set_fan`, `save`, and `defaults`. `get_status` includes `ble_available` and `ble_status`, reflecting BLE initialization and advertising startup state. Failure details also remain available in the serial log. Example:
+Supported commands: `get_config`, `get_status`, `get_tach_diagnostics`, `set_profile`, `set_fan`, `save`, and `defaults`. `get_status` includes `ble_available` and `ble_status`, reflecting BLE initialization and advertising startup state. Failure details also remain available in the serial log. Example:
 
 ```json
 {"cmd":"set_fan","fan":3,"mode":"fixed","duty":55}

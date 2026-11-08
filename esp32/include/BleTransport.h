@@ -21,6 +21,7 @@ public:
 
 private:
     static constexpr size_t MaxCommandBytes = 1024;
+    static constexpr uint16_t MaxNotificationBytes = 512;
 
     struct RxPacket {
         uint32_t session;

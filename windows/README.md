@@ -75,6 +75,51 @@ Publishing is unpackaged, self-contained .NET and Windows App SDK. Distribute th
 
 A multi-command update is not atomic. If the link fails, some changes may have taken effect. The app invalidates the session and never retries an interrupted write. After reconnecting, review the actual configuration and local draft before applying again. Draft edits are retained during disconnects but not after closing the app.
 
+## TACH diagnostics without USB
+
+The Dashboard includes **Capture 30 s**, **Capture 60 s**, cancellation, and **Export CSV**.
+Install the diagnostic ESP32 firmware over the existing OTA connection first. Older firmware
+remains usable for control; capture is disabled unless `get_status` advertises
+`tach_diagnostics_supported: true`. No serial port or simultaneous USB/VIN power is required.
+
+Apply a fixed PWM duty and let the fans stabilize before starting. The capture does not change
+fan settings. It collects all four fans' consecutive, numbered one-second windows over BLE.
+Normal telemetry/history polling, setting commands and OTA are suspended during capture;
+the ESP32 continues regulating locally. Controls resume afterward. Interruptions, firmware
+restarts detected by the cursor, and overwritten windows fail the capture explicitly. No
+partial capture is presented as complete; a new capture clears the previous result. Cancellation
+of an in-flight BLE request may require automatic reconnection.
+
+After completion, export CSV using the save dialog. Export remains available after disconnect.
+Columns include firmware sequence and uptime, fan number, actual window duration, pulse count,
+interval count/minimum/maximum/sum, RPM by counting and by periods, existing displayed RPM,
+and applied PWM. Units are microseconds and RPM; decimals use a point, absent period RPM is `NA`.
+No filtering or smoothing is applied. Both estimators use the same edges and can agree despite
+noise; inspect interval extremes as well. See the [firmware diagnostic reference](../esp32/README.md#tach-diagnostics).
+
+With firmware **1.4.2**, the same CSV also exports `trace_trigger_us`, `trace_reference_us`,
+and `trace_us`. The last column is a semicolon-separated sequence of nine intervals in
+microseconds: four preceding intervals, the short triggering interval, and four following
+intervals. `NA` means no complete anomaly trace for that fan/window (including older firmware).
+The trigger is an interval strictly below 75% of its predecessor; it does not filter the data.
+Compare the trigger and its following interval's sum against normal surrounding intervals.
+The trace may span two measurement windows and is attached when complete. Firmware retains
+only the first trace per fan between snapshots, not every anomaly.
+
+Firmware **1.4.3** uses corrected period RPM for the dashboard and future RPM history.
+The CSV retains raw estimates and appends `rpm_raw_display`, `rpm_corrected`,
+`corrected_intervals`, `corrected_span_us`, and `merged_pairs`. Unavailable newer fields
+are `NA` with older firmware. The correction only merges two short intervals after their
+sum and the next interval match a stable recent period; it does not smooth the chart or
+change fan control. Pending candidates may cross update windows. If no usable resolved
+period exists, displayed RPM uses raw counting and `rpm_corrected` is `NA`.
+
+Firmware **1.4.4** fixes diagnostic acquisition falling behind the expanded responses:
+UART notifications now use the negotiated MTU and firmware retains 128 recent windows.
+An overwritten cursor is explicitly distinguished from a backwards sequence after restart.
+Capture failure invalidates the BLE session by design; this disconnection alone does not
+indicate an ESP32 crash.
+
 ## Firmware update over Bluetooth
 
 Install firmware **1.2.0 or later once over USB**, including its OTA-compatible partition table.

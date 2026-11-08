@@ -178,6 +178,26 @@ public sealed class ControllerConnection(
     public Task<(RemoteConfiguration Config, Telemetry Status)> DefaultsAsync() =>
         RunAsync((controller, ct) => controller.DefaultsAsync(ct));
 
+    /// <summary>Captures TACH diagnostics on the current session without replay after reconnect.</summary>
+    /// <param name="seconds">Either 30 or 60 seconds.</param>
+    /// <param name="progress">Receives elapsed acquisition seconds.</param>
+    /// <param name="ct">Cancels acquisition.</param>
+    /// <returns>Consecutive windows from a single controller session.</returns>
+    public async Task<IReadOnlyList<TachWindow>> CaptureTachAsync(int seconds,
+        IProgress<double>? progress, CancellationToken ct = default)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        using var lifetime = CancellationTokenSource.CreateLinkedTokenSource(ct, _lifetime.Token);
+        await _gate.WaitAsync(lifetime.Token).ConfigureAwait(false);
+        try
+        {
+            var connection = _current ?? throw new IOException("No controller is connected.");
+            using var capture = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token, connection.Lifetime.Token);
+            return await connection.Controller.CaptureTachAsync(seconds, progress, capture.Token).ConfigureAwait(false);
+        }
+        finally { _gate.Release(); }
+    }
+
     /// <summary>Uploads local firmware, asks before activation and reconnects to verify the actual running image.</summary>
     /// <param name="path">Local application .bin file.</param>
     /// <param name="progress">Acknowledged transfer percentage.</param>

@@ -1,5 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
 <root>
+  <data name="TachHeading.Text" xml:space="preserve"><value>Diagnostic TACH par Bluetooth</value></data>
+  <data name="TachCapture30.Content" xml:space="preserve"><value>Capturer 30 s</value></data>
+  <data name="TachCapture60.Content" xml:space="preserve"><value>Capturer 60 s</value></data>
+  <data name="TachCancel.Content" xml:space="preserve"><value>Annuler la capture</value></data>
+  <data name="TachExport.Content" xml:space="preserve"><value>Exporter en CSV</value></data>
+  <data name="TachSeconds.Text" xml:space="preserve"><value>secondes capturées</value></data>
+  <data name="Tach.Initial" xml:space="preserve"><value>Nécessite le firmware de diagnostic. Capturez à PWM fixe stabilisé ; les relevés habituels sont suspendus pendant la capture.</value></data>
+  <data name="Tach.Capturing" xml:space="preserve"><value>Capture des quatre ventilateurs par Bluetooth. Les relevés habituels sont suspendus.</value></data>
+  <data name="Tach.Complete" xml:space="preserve"><value>Capture terminée. Exportez le CSV pour enregistrer et examiner les mesures.</value></data>
+  <data name="Tach.Canceled" xml:space="preserve"><value>Capture annulée ; aucune capture partielle n’est exportée.</value></data>
+  <data name="Tach.Failed" xml:space="preserve"><value>Échec de la capture ; aucune capture partielle n’est exportée. Vérifiez la connexion et le firmware.</value></data>
   <data name="OtaHeading.Text" xml:space="preserve"><value>Mise à jour du firmware par Bluetooth</value></data>
   <data name="OtaWarning.Text" xml:space="preserve"><value>Sélectionnez un fichier .bin applicatif de confiance, pas une image flash complète. Sauvegardez les paramètres : les changements RAM non sauvegardés seront perdus au redémarrage. SHA-256 vérifie l’intégrité, pas l’auteur. Maintenez le contrôleur alimenté.</value></data>
   <data name="OtaSelect.Content" xml:space="preserve"><value>Sélectionner un firmware .bin</value></data>

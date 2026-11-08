@@ -15,6 +15,7 @@ constexpr uint8_t PwmBits = 10;
 constexpr bool PwmInverted = false;
 constexpr uint32_t ControlIntervalMs = 250;
 constexpr uint32_t RpmIntervalMs = 1000;
+constexpr bool TachDiagnosticsSerial = false;
 constexpr uint32_t StartupBoostMs = 1000;
 
 }  // namespace controller::hardware

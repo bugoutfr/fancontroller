@@ -63,6 +63,59 @@ public sealed class ControllerService(ProtocolSession session) : IDisposable
     /// <exception cref="OperationCanceledException">L'opération a été annulée.</exception>
     public Task<Telemetry> StatusAsync(CancellationToken ct = default) => Run(() => ReadStatus(ct), ct);
 
+    /// <summary>Collects consecutive firmware windows exclusively with respect to normal polling.</summary>
+    /// <param name="seconds">Capture duration, either 30 or 60 seconds.</param>
+    /// <param name="progress">Receives the number of captured seconds.</param>
+    /// <param name="ct">Cancels acquisition and any outstanding request.</param>
+    /// <returns>The complete capture, never a success-shaped partial result.</returns>
+    public Task<IReadOnlyList<TachWindow>> CaptureTachAsync(int seconds, IProgress<double>? progress,
+        CancellationToken ct = default)
+    {
+        if (seconds is not (30 or 60))
+            throw new ArgumentOutOfRangeException(nameof(seconds));
+        return Run<IReadOnlyList<TachWindow>>(async () =>
+        {
+            using var deadline = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            deadline.CancelAfter(TimeSpan.FromSeconds(seconds + 60));
+            async Task<TachReply> Read(ulong? after)
+            {
+                var response = after.HasValue
+                    ? await session.RequestAsync(new
+                    {
+                        cmd = "get_tach_diagnostics",
+                        after = after.Value
+                    }, deadline.Token)
+                    : await session.RequestAsync(new
+                    {
+                        cmd = "get_tach_diagnostics"
+                    }, deadline.Token);
+                var reply = WireJson.Read<TachReply>(response.GetProperty("data"));
+                TachDiagnostics.Validate(reply, after);
+                return reply;
+            }
+
+            var cursor = (await Read(null)).LatestSequence;
+            var windows = new List<TachWindow>();
+            ulong capturedUs = 0;
+            // The deadline also bounds a controller that replies but stops advancing.
+            while (capturedUs < (ulong)seconds * 1000000)
+            {
+                deadline.Token.ThrowIfCancellationRequested();
+                var reply = await Read(cursor);
+                if (reply.Window is { } window)
+                {
+                    windows.Add(window);
+                    cursor = window.Sequence;
+                    capturedUs += window.Fans.Min(f => f.WindowUs);
+                    progress?.Report(Math.Min(seconds, capturedUs / 1000000.0));
+                }
+                else
+                    await Task.Delay(250, deadline.Token);
+            }
+            return windows;
+        }, ct);
+    }
+
     /// <summary>Applique les profils et ventilateurs, puis relit l'état sans sauvegarder en mémoire persistante.</summary>
     /// <param name="draft">Configuration à valider puis à envoyer.</param>
     /// <param name="ct">Jeton d'annulation de l'opération.</param>

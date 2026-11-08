@@ -24,6 +24,123 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
     private Task<bool>? _firmwareUpdate;
     private bool _firmwareUpdating;
     private double _firmwareProgress;
+    private CancellationTokenSource? _tachCts;
+    private Task? _tachCapture;
+    private bool _tachCapturing;
+    private IReadOnlyList<TachWindow> _tachWindows = [];
+    private double _tachSeconds;
+    private int _tachDuration = 30;
+    private string _tachMessageKey = "Tach.Initial";
+    private string _tachMessageFallback = "Requires diagnostic firmware. Capture at stable fixed PWM; normal readings pause during capture.";
+
+    /// <summary>Whether this firmware advertises Bluetooth TACH diagnostics.</summary>
+    public bool TachSupported => _lastTelemetry?.TachDiagnosticsSupported == true;
+
+    /// <summary>Whether diagnostic acquisition is active.</summary>
+    public bool TachCapturing
+    {
+        get => _tachCapturing;
+        private set
+        {
+            Set(ref _tachCapturing, value);
+            RefreshCommands();
+            Changed(nameof(CanExportTach));
+        }
+    }
+
+    /// <summary>Whether a new capture may start on the current firmware.</summary>
+    public bool CanCaptureTach => Ready() && TachSupported && !TachCapturing;
+
+    /// <summary>Whether a complete capture can be exported, including after disconnection.</summary>
+    public bool CanExportTach => !_disposed && !TachCapturing && _tachWindows.Count != 0;
+
+    /// <summary>Number of seconds represented by the captured windows.</summary>
+    public double TachSeconds
+    {
+        get => _tachSeconds;
+        private set => Set(ref _tachSeconds, value);
+    }
+
+    /// <summary>Requested duration used by the acquisition progress indicator.</summary>
+    public int TachDuration
+    {
+        get => _tachDuration;
+        private set => Set(ref _tachDuration, value);
+    }
+
+    /// <summary>Localized capture outcome or instructions.</summary>
+    public string TachMessage => Localizer.Get(_tachMessageKey, _tachMessageFallback);
+
+    private void SetTachMessage(string key, string fallback)
+    {
+        _tachMessageKey = key;
+        _tachMessageFallback = fallback;
+        Changed(nameof(TachMessage));
+    }
+
+    /// <summary>Starts a Bluetooth capture owned and awaited by this view model.</summary>
+    /// <param name="seconds">Either 30 or 60 seconds.</param>
+    /// <returns>Completion after acquisition or an explicitly reported failure.</returns>
+    public Task CaptureTachAsync(int seconds)
+    {
+        if (!CanCaptureTach)
+            throw new InvalidOperationException("TACH diagnostics are unavailable or another operation is active.");
+        if (seconds is not (30 or 60))
+            throw new ArgumentOutOfRangeException(nameof(seconds));
+        return _tachCapture = CaptureTachCoreAsync(seconds);
+    }
+
+    private async Task CaptureTachCoreAsync(int seconds)
+    {
+        using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(_applicationLifetime.Token);
+        _tachCts = cancellation;
+        _tachWindows = [];
+        TachSeconds = 0;
+        TachDuration = seconds;
+        TachCapturing = true;
+        Busy = true;
+        Error = "";
+        SetTachMessage("Tach.Capturing", "Capturing all four fans over Bluetooth. Normal readings are paused.");
+        try
+        {
+            var progress = new Progress<double>(value => Dispatch(() =>
+            {
+                if (_tachCts == cancellation)
+                    TachSeconds = value;
+            }));
+            _tachWindows = await _connection.CaptureTachAsync(seconds, progress, cancellation.Token);
+            TachSeconds = seconds;
+            SetTachMessage("Tach.Complete", "Capture complete. Export CSV to save and inspect the measurements.");
+        }
+        catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
+        {
+            SetTachMessage("Tach.Canceled", "Capture canceled; no partial capture is exported.");
+        }
+        catch (Exception ex)
+        {
+            SetTachMessage("Tach.Failed", "Capture failed; no partial capture is exported. Check the connection and firmware.");
+            ReportError(ex);
+        }
+        finally
+        {
+            _tachCts = null;
+            TachCapturing = false;
+            Busy = false;
+        }
+    }
+
+    /// <summary>Cancels acquisition; an in-flight BLE cancellation can require reconnection.</summary>
+    public void CancelTachCapture() => _tachCts?.Cancel();
+
+    /// <summary>Writes the last complete capture without replacing it on export failure.</summary>
+    /// <param name="path">Destination CSV chosen by the user.</param>
+    /// <returns>Completion after the file has been written.</returns>
+    public async Task ExportTachAsync(string path)
+    {
+        if (!CanExportTach)
+            throw new InvalidOperationException("No complete TACH capture is available.");
+        await File.WriteAllTextAsync(path, TachDiagnostics.ToCsv(_tachWindows), _applicationLifetime.Token);
+    }
     private string _firmwareMessageKey = "Ota.Initial", _firmwareMessageFallback = "OTA requires firmware 1.2.0 or later, initially installed over USB.";
 
     /// <summary>Whether firmware loading, transfer, confirmation or restart verification is active.</summary>
@@ -38,7 +155,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
     }
 
     /// <summary>Whether a new firmware transfer may be started.</summary>
-    public bool CanUpdateFirmware => Ready() && !FirmwareUpdating && _connection.FirmwareUpdateSupported;
+    public bool CanUpdateFirmware => Ready() && !FirmwareUpdating && !TachCapturing && _connection.FirmwareUpdateSupported;
 
     /// <summary>Percentage of selected firmware bytes acknowledged in flash.</summary>
     public double FirmwareProgress
@@ -287,7 +404,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
     }
 
     /// <summary>Whether controls may edit the connected draft.</summary>
-    public bool CanEdit => Connected && !Busy && !FirmwareUpdating;
+    public bool CanEdit => Connected && !Busy && !FirmwareUpdating && !TachCapturing;
 
     /// <summary>The connection label warning that retained offline readings are stale.</summary>
     public string ConnectionLabel => Localizer.Get(Connected ? "Connection.Connected" : "Connection.Disconnected",
@@ -425,6 +542,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         Changed(nameof(ConfigurationMessage));
         Changed(nameof(Firmware));
         Changed(nameof(FirmwareMessage));
+        Changed(nameof(TachMessage));
         Changed(nameof(ConnectionLabel));
         Changed(nameof(Message));
         Changed(nameof(LocalState));
@@ -532,7 +650,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         }), Ready);
     }
 
-    private AsyncCommand Command(Func<Task> action, Func<bool> enabled) => new(action, () => !_disposed && !FirmwareUpdating && enabled(), ex =>
+    private AsyncCommand Command(Func<Task> action, Func<bool> enabled) => new(action, () => !_disposed && !FirmwareUpdating && !TachCapturing && enabled(), ex =>
     {
         if (ex is OperationCanceledException && (_disposed || _connection.ReconnectionPaused))
             return;
@@ -541,7 +659,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
             Error = ErrorMessages.Details(ex);
     });
 
-    private bool Ready() => Connected && !Busy && !FirmwareUpdating;
+    private bool Ready() => Connected && !Busy && !FirmwareUpdating && !TachCapturing;
 
     private void RefreshCommands()
     {
@@ -553,6 +671,8 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         Changed(nameof(DisconnectLabel));
         Changed(nameof(ConnectionHeading));
         Changed(nameof(CanUpdateFirmware));
+        Changed(nameof(CanCaptureTach));
+        Changed(nameof(CanEdit));
     }
 
     private void Dispatch(Action action)
@@ -782,7 +902,8 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         RefreshCommands();
         await _connection.DisposeAsync();
         await Task.WhenAll(Commands.Select(command => command.ExecutionTask).Append(_initialization)
-            .Append(_firmwareUpdate is null ? Task.CompletedTask : _firmwareUpdate));
+            .Append(_firmwareUpdate is null ? Task.CompletedTask : _firmwareUpdate)
+            .Append(_tachCapture ?? Task.CompletedTask));
         await History.DisposeAsync();
 
         _connection.Changed -= ConnectionChanged;
@@ -912,6 +1033,8 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         Changed(nameof(SettingsSummary));
         Changed(nameof(SettingsStatus));
         _lastTelemetry = status;
+        Changed(nameof(TachSupported));
+        Changed(nameof(CanCaptureTach));
         _firmwareVersion = string.IsNullOrWhiteSpace(status.FirmwareVersion) ? null : status.FirmwareVersion;
         Changed(nameof(Firmware));
         var remoteRam = status.Dirty ? Localizer.Get("Telemetry.NotSaved", "NOT saved") : Localizer.Get("Telemetry.SavedUnchanged", "saved / unchanged");
