@@ -158,6 +158,9 @@ private:
     struct FanState {
         float appliedDuty = 100.0f;
         float requestedDuty = 100.0f;
+        float smoothedDuty = 0.0f;
+        bool automaticInitialized = false;
+        bool automaticRunning = false;
         float rpm = 0.0f;
         bool boosting = false;
         uint32_t boostStarted = 0;

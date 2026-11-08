@@ -42,8 +42,20 @@ See the [wiring diagram PNG](docs/schema-electrique.png) or [SVG](docs/schema-el
 - NTC conversion uses the beta equation (10 kΩ, B3950). Samples are averaged from 16 calibrated ADC millivolt readings every 250 ms. The calculation assumes a 3,300 mV divider supply.
 - `TemperatureOffsetC` in [HardwareConfig.h](include/HardwareConfig.h) applies a common −0.7 °C calibration correction. Validate calibration across the temperature range; this single-point adjustment does not guarantee full-range accuracy.
 - Each fan is in `auto` or `fixed` mode. Fixed mode sets PWM duty, not a target RPM.
+- Since firmware **1.4.7**, automatic PWM follows an exponential filter with a 1 s rising
+  and 3 s falling time constant, using actual elapsed control time. The state starts from
+  the previous requested duty (100% at boot) and follows profile edits without a reset.
+  Temperature and RPM telemetry are not additionally smoothed. `target_duty` reports the
+  unsmoothed target after start hysteresis; `applied_duty` and diagnostic `pwm_pct` report
+  the actual filtered output, including boost/safety overrides.
+- Automatic profiles with an initial zero-duty plateau start a stopped fan only at least
+  **0.5 °C above the last zero-duty point**. A running fan continues below that start
+  threshold until the interpolated target reaches zero, when PWM stops immediately.
+  All-zero profiles remain stopped; profiles whose first duty is positive have no start
+  hysteresis. Fixed mode bypasses both mechanisms and re-entering automatic mode evaluates
+  the start threshold anew.
 - Startup boost runs at 100% for about one second, including when moving from 0% to a positive target.
-- **Safety override:** a sensor fault or temperature at/above **80 °C** sets both associated fans to 100%, including fixed-mode fans. The requested mode is retained and resumes when the fault clears.
+- **Safety override:** a sensor fault or temperature at/above **80 °C** immediately sets both associated fans to 100%, including fixed-mode fans, without smoothing or hysteresis. The requested mode is retained and resumes when the fault clears; automatic PWM falls from 100% through the filter, or stops immediately if its target is zero or below its restart threshold.
 - Electrical sensor faults: ≤50 mV is `short_circuit`; ≥3,050 mV is `open_circuit`; calculated temperatures outside −20…120 °C are `out_of_range`. Faulted sensors report a null temperature.
 - There is no RPM closed-loop control or automatic recovery when TACH reports zero. Hardware faults, power loss, or MCU reset can still interrupt cooling; use independent thermal protection where required.
 

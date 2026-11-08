@@ -17,5 +17,8 @@ constexpr uint32_t ControlIntervalMs = 250;
 constexpr uint32_t RpmIntervalMs = 1000;
 constexpr bool TachDiagnosticsSerial = false;
 constexpr uint32_t StartupBoostMs = 1000;
+constexpr float AutomaticRiseTimeMs = 1000.0f;
+constexpr float AutomaticFallTimeMs = 3000.0f;
+constexpr float AutomaticStartHysteresisC = 0.5f;
 
 }  // namespace controller::hardware

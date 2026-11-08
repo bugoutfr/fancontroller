@@ -152,7 +152,40 @@ void ThermalController::readSensors() {
 void ThermalController::controlFans(uint32_t now, const Config& config) {
     for (size_t fan = 0; fan < FanCount; ++fan) {
         auto& state = fans_[fan];
-        const float target = targetDuty(config, fan, sensors_[fan / 2].temperature);
+        const auto& temperature = sensors_[fan / 2].temperature;
+        float target = targetDuty(config, fan, temperature);
+        if (!config.fans[fan].automatic || safetyActive(temperature)) {
+            state.smoothedDuty = target;
+            state.automaticInitialized = false;
+            state.automaticRunning = false;
+        } else {
+            const auto& profile = config.profiles[fan / 2];
+            // Only profiles with a zero-duty plateau need a separate restart threshold.
+            if (target > 0 && !state.automaticRunning && profile.points[0].duty == 0) {
+                size_t lastZero = 0;
+                while (lastZero + 1 < profile.count && profile.points[lastZero + 1].duty == 0) {
+                    ++lastZero;
+                }
+                if (temperature.celsius < profile.points[lastZero].temperature +
+                        hardware::AutomaticStartHysteresisC) {
+                    target = 0;
+                }
+            }
+            state.automaticRunning = target > 0;
+            if (!state.automaticInitialized) {
+                state.smoothedDuty = state.requestedDuty;
+                state.automaticInitialized = true;
+            }
+            if (target == 0) {
+                // Stop exactly at the zero plateau rather than asymptotically approaching zero.
+                state.smoothedDuty = 0;
+            } else {
+                const float timeMs = target > state.smoothedDuty
+                    ? hardware::AutomaticRiseTimeMs : hardware::AutomaticFallTimeMs;
+                const float alpha = 1.0f - std::exp(-float(now - lastControl_) / timeMs);
+                state.smoothedDuty += alpha * (target - state.smoothedDuty);
+            }
+        }
         if (target > 0 && state.requestedDuty == 0) {
             state.boosting = true;
             state.boostStarted = now;
@@ -162,7 +195,7 @@ void ThermalController::controlFans(uint32_t now, const Config& config) {
         }
         state.requestedDuty = target;
         if (state.pwmReady) {
-            writePwm(fan, state.boosting ? 100.0f : target);
+            writePwm(fan, state.boosting ? 100.0f : state.smoothedDuty);
         }
     }
 }

@@ -78,6 +78,12 @@ A multi-command update is not atomic. If the link fails, some changes may have t
 ## TACH diagnostics without USB
 
 Settings includes **Capture 30 s**, **Capture 60 s**, cancellation, and **Export CSV**, below firmware updates.
+
+Firmware **1.4.7** stabilizes automatic PWM with 1 s rising / 3 s falling time constants.
+For curves beginning at 0%, stopped fans restart 0.5 °C above the last zero-duty point
+and stop immediately when the curve returns to zero. Fixed PWM, startup boost and thermal
+safety bypass this filtering. Live target PWM and applied PWM may therefore differ even
+outside startup boost; temperature and RPM graphs retain the measured values.
 Install the diagnostic ESP32 firmware over the existing OTA connection first. Older firmware
 remains usable for control; capture is disabled unless `get_status` advertises
 `tach_diagnostics_supported: true`. No serial port or simultaneous USB/VIN power is required.

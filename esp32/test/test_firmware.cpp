@@ -110,7 +110,7 @@ void testCommandsRegulationAndStorage() {
     response = status(processor);
     assert(response["data"]["ble_available"] == true);
     assert(response["data"]["ble_status"] == "ready");
-    assert(response["data"]["firmware_version"] == "1.4.6");
+    assert(response["data"]["firmware_version"] == "1.4.7");
     assert(response["data"]["ble_rssi_dbm"].isNull());
     for (const int8_t rssi : {int8_t(-127), int8_t(-62), int8_t(0), int8_t(20)}) {
         const String wire = processor.process(R"({"cmd":"get_status"})", &rssi);
@@ -137,9 +137,13 @@ void testCommandsRegulationAndStorage() {
     advance(thermal, storage, 1000);
     response = status(processor);
     assert(response["data"]["fans"][0]["applied_duty"] == 0);
-    assert(std::fabs(response["data"]["fans"][1]["applied_duty"].as<float>() - 30) < 0.01f);
-    assert(std::fabs(response["data"]["fans"][2]["applied_duty"].as<float>() - 18.6f) < 0.01f);
-    assert(std::fabs(response["data"]["fans"][3]["applied_duty"].as<float>() - 18.6f) < 0.01f);
+    const float expectedFirst = 30.0f + 70.0f * std::exp(-1000.0f / 3000.0f);
+    const float expectedSecond = 18.6f +
+        (30.0f + 70.0f * std::exp(-250.0f / 3000.0f) - 18.6f) *
+        std::exp(-750.0f / 3000.0f);
+    assert(std::fabs(response["data"]["fans"][1]["applied_duty"].as<float>() - expectedFirst) < 0.01f);
+    assert(std::fabs(response["data"]["fans"][2]["applied_duty"].as<float>() - expectedSecond) < 0.01f);
+    assert(std::fabs(response["data"]["fans"][3]["applied_duty"].as<float>() - expectedSecond) < 0.01f);
     assert(response["data"]["fans"][3]["sensor"] == 2);
 
     execute(processor, R"({"cmd":"set_fan","fan":1,"mode":"fixed","duty":45})");
@@ -249,6 +253,142 @@ void testTimerWraparound() {
     assert(response["data"]["ble_status"] == "advertising_start_failed");
     assert(response["data"]["fans"][0]["boost"] == false);
     assert(response["data"]["fans"][0]["applied_duty"].as<float>() < 100);
+}
+
+void setConstantProfile(Config& config, float duty) {
+    config.profiles[0] = {2, {{20.0f, duty}, {40.0f, duty}}};
+}
+
+void testAutomaticDutySmoothing() {
+    fake::now = 0;
+    fake::adc[33] = fake::adc[32] = 1650;
+    Config config = defaults();
+    config.fans[0] = {false, 25};
+    ThermalController thermal;
+    thermal.begin();
+    auto tick = [&](uint32_t now) {
+        fake::now = now;
+        thermal.update(now, config);
+        return thermal.status(config).fans[0];
+    };
+    assert(tick(1000).appliedDuty == 25);
+    config.fans[0].automatic = true;
+    setConstantProfile(config, 75);
+    float expected = 75 - 50 * std::exp(-0.25f);
+    auto fan = tick(1250);
+    assert(fan.requestedDuty == 75 && !fan.boosting);
+    assert(std::fabs(fan.appliedDuty - expected) < 0.001f);
+    assert(fake::pwm[hardware::PwmPins[0]] == uint32_t(std::lround(expected * 1023 / 100)));
+    expected = 75 - 50 * std::exp(-1.0f);
+    assert(std::fabs(tick(2000).appliedDuty - expected) < 0.001f);
+    setConstantProfile(config, 25);
+    const float beforeFall = expected;
+    expected = 25 + (beforeFall - 25) * std::exp(-0.25f / 3);
+    assert(std::fabs(tick(2250).appliedDuty - expected) < 0.001f);
+    expected = 25 + (beforeFall - 25) * std::exp(-1.0f);
+    assert(std::fabs(tick(5000).appliedDuty - expected) < 0.001f);
+
+    config.fans[0] = {false, 60};
+    assert(tick(5250).appliedDuty == 60);
+    config.fans[0].automatic = true;
+    expected = 25 + 35 * std::exp(-0.25f / 3);
+    assert(std::fabs(tick(5500).appliedDuty - expected) < 0.001f);
+    for (const uint32_t adc : {0U, 3300U, 100U}) {
+        fake::adc[33] = adc;
+        assert(tick(fake::now + 250).appliedDuty == 100);
+        assert(thermal.status(config).sensors[0].safety);
+        assert(thermal.status(config).fans[1].appliedDuty == 100);
+        assert(fake::pwm[hardware::PwmPins[0]] == 1023);
+        fake::adc[33] = 1650;
+        expected = 25 + 75 * std::exp(-0.25f / 3);
+        assert(std::fabs(tick(fake::now + 250).appliedDuty - expected) < 0.001f);
+    }
+    assert(std::fabs(tick(fake::now + 60000).appliedDuty - 25) < 0.001f);
+
+    fake::now = std::numeric_limits<uint32_t>::max() - 500;
+    ThermalController wrapped;
+    config.fans[0] = {false, 20};
+    wrapped.begin();
+    fake::now += 250;
+    wrapped.update(fake::now, config);
+    config.fans[0].automatic = true;
+    setConstantProfile(config, 80);
+    fake::now += 1000;
+    wrapped.update(fake::now, config);
+    expected = 80 - 60 * std::exp(-1.0f);
+    assert(std::fabs(wrapped.status(config).fans[0].appliedDuty - expected) < 0.001f);
+}
+
+uint32_t millivoltsForTemperature(float celsius) {
+    const float kelvin = celsius - hardware::TemperatureOffsetC + 273.15f;
+    const float resistance = NtcOhms * std::exp(Beta * (1.0f / kelvin - 1.0f / 298.15f));
+    return uint32_t(std::round(SupplyMv * resistance / (DividerOhms + resistance)));
+}
+
+void testAutomaticStartHysteresis() {
+    fake::now = 0;
+    fake::adc[33] = fake::adc[32] = millivoltsForTemperature(30);
+    Config config = defaults();
+    config.profiles[0] = {3, {{20, 0}, {30, 0}, {35, 65}}};
+    ThermalController thermal;
+    thermal.begin();
+    auto tick = [&](float temperature, uint32_t elapsed = 250) {
+        fake::adc[33] = millivoltsForTemperature(temperature);
+        fake::now += elapsed;
+        thermal.update(fake::now, config);
+        return thermal.status(config).fans[0];
+    };
+    assert(tick(29.9f).appliedDuty == 0);
+    assert(fake::pwm[hardware::PwmPins[0]] == 0);
+    for (int i = 0; i < 8; ++i) {
+        auto fan = tick(i % 2 ? 30.1f : 29.9f);
+        assert(fan.requestedDuty == 0 && fan.appliedDuty == 0 && !fan.boosting);
+    }
+    auto fan = tick(30.4f);
+    assert(fan.appliedDuty == 0);
+    fan = tick(30.6f);
+    const uint32_t started = fake::now;
+    assert(fan.requestedDuty > 0 && fan.appliedDuty == 100 && fan.boosting);
+    assert(fake::pwm[hardware::PwmPins[0]] == 1023);
+    fan = tick(30.1f);
+    assert(fan.requestedDuty > 0 && fan.boosting);
+    fan = tick(30.1f, 750);
+    assert(fake::now - started == hardware::StartupBoostMs);
+    assert(fan.requestedDuty > 0 && fan.appliedDuty > 0 && fan.appliedDuty < 100 && !fan.boosting);
+    fan = tick(29.9f);
+    assert(fan.requestedDuty == 0 && fan.appliedDuty == 0 && !fan.boosting);
+    assert(tick(30.1f).appliedDuty == 0);
+
+    fan = tick(81);
+    assert(thermal.status(config).sensors[0].safety && fan.appliedDuty == 100);
+    assert(tick(30.1f).appliedDuty == 0);
+    config.fans[0] = {false, 5};
+    fan = tick(29.9f);
+    assert(fan.requestedDuty == 5 && fan.appliedDuty == 100 && fan.boosting);
+    assert(tick(29.9f, 1000).appliedDuty == 5);
+    config.fans[0].automatic = true;
+    assert(tick(30.1f).appliedDuty == 0);
+
+    config.profiles[0] = {2, {{35, 0}, {40, 65}}};
+    assert(tick(35.4f).appliedDuty == 0);
+    assert(tick(35.6f).boosting);
+    assert(tick(34.9f).appliedDuty == 0);
+    const float exactTemperature = temperatureFromMv(1650, hardware::TemperatureOffsetC).celsius;
+    const float zeroEnd = exactTemperature - hardware::AutomaticStartHysteresisC;
+    config.profiles[0] = {4, {{zeroEnd - 10, 0}, {zeroEnd - 5, 0},
+        {zeroEnd, 0}, {zeroEnd + 5, 65}}};
+    fake::adc[33] = 1650;
+    fake::now += 250;
+    thermal.update(fake::now, config);
+    fan = thermal.status(config).fans[0];
+    assert(fan.requestedDuty > 0 && fan.boosting);
+    assert(tick(zeroEnd - 0.1f).appliedDuty == 0);
+    setConstantProfile(config, 0);
+    assert(tick(60).appliedDuty == 0);
+    setConstantProfile(config, 20);
+    assert(tick(19).boosting);
+    fan = tick(19, 1000);
+    assert(fan.requestedDuty == 20 && fan.appliedDuty > 0 && !fan.boosting);
 }
 
 struct TachLog {
@@ -753,6 +893,8 @@ void testOtaCommandsAndPacketValidation() {
 int main() {
     testCommandsRegulationAndStorage();
     testTimerWraparound();
+    testAutomaticDutySmoothing();
+    testAutomaticStartHysteresis();
     testTachDiagnostics();
     testTachMicrosWraparound();
     testTachBleHistory();
@@ -760,5 +902,5 @@ int main() {
     testTachTraceWraparoundAndThreshold();
     testCorrectedPeriods();
     testOtaCommandsAndPacketValidation();
-    std::puts("PASS: class integration, BLE JSON v1, OTA state/packet validation, PWM/NTC/TACH diagnostics, NVS, timer wraparound");
+    std::puts("PASS: class integration, BLE JSON v1, OTA state/packet validation, automatic PWM smoothing/start hysteresis, PWM/NTC/TACH diagnostics, NVS, timer wraparound");
 }
