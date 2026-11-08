@@ -277,9 +277,8 @@
                                         <Border Style="{StaticResource Card}" Margin="0,0,0,10">
                                             <StackPanel Orientation="Horizontal" Spacing="16">
                                                 <TextBlock Text="{Binding Title}" Width="150" VerticalAlignment="Center"/>
-                                                <ComboBox SelectedIndex="{Binding ModeIndex, Mode=TwoWay}" Width="180" loc:Localizer.Key="SettingsFanMode" AutomationProperties.Name="Fan mode">
-                                                    <ComboBoxItem loc:Localizer.Key="SettingsAutomatic" Content="{Binding AutomaticText}"/><ComboBoxItem loc:Localizer.Key="SettingsFixed" Content="{Binding FixedText}"/>
-                                                </ComboBox>
+                                                <ComboBox ItemsSource="{Binding ModeOptions}" DisplayMemberPath="Text" SelectedIndex="{Binding ModeIndex, Mode=TwoWay}" Width="180"
+                                                          loc:Localizer.Key="SettingsFanMode" AutomationProperties.Name="Fan mode"/>
                                                 <TextBox Text="{Binding Duty, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Width="90" loc:Localizer.Key="SettingsFixedPwm" AutomationProperties.Name="Fixed PWM percentage"/>
                                                 <TextBlock loc:Localizer.Key="SettingsFixedMode" Text="{Binding FixedModeText}" VerticalAlignment="Center"/>
                                             </StackPanel>

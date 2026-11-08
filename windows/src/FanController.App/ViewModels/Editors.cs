@@ -327,6 +327,24 @@ public sealed class ProfileEditor : ObservableObject
     }
 }
 
+/// <summary>A stable fan-mode choice whose label follows the selected UI language.</summary>
+public sealed class FanModeOption : ObservableObject
+{
+    private readonly string _resourceKey;
+    private readonly string _fallback;
+
+    internal FanModeOption(string resourceKey, string fallback)
+    {
+        _resourceKey = resourceKey;
+        _fallback = fallback;
+    }
+
+    /// <summary>The localized option label.</summary>
+    public string Text => Localizer.Get(_resourceKey, _fallback);
+
+    internal void RefreshLocalization() => Changed(nameof(Text));
+}
+
 /// <summary>Edits automatic or fixed fan control without validating inactive fixed-duty text.</summary>
 public sealed class FanEditor : ObservableObject
 {
@@ -340,10 +358,14 @@ public sealed class FanEditor : ObservableObject
     public string Title => Localizer.Format("Fan.Name", $"Fan {Fan}", Fan);
 
     /// <summary>The automatic-mode option label.</summary>
-    public string AutomaticText => Localizer.Get("SettingsAutomatic.Content", "Automatic");
+    public string AutomaticText => ModeOptions[0].Text;
 
     /// <summary>The fixed-mode option label.</summary>
-    public string FixedText => Localizer.Get("SettingsFixed.Content", "Fixed");
+    public string FixedText => ModeOptions[1].Text;
+
+    /// <summary>The localized mode options, ordered to match the selected index.</summary>
+    public IReadOnlyList<FanModeOption> ModeOptions { get; } =
+        [new("SettingsAutomatic.Content", "Automatic"), new("SettingsFixed.Content", "Fixed")];
 
     /// <summary>The fixed-duty input label.</summary>
     public string FixedModeText => Localizer.Get("SettingsFixedMode.Text", "% (fixed mode)");
@@ -376,6 +398,8 @@ public sealed class FanEditor : ObservableObject
         Changed(nameof(Title));
         Changed(nameof(AutomaticText));
         Changed(nameof(FixedText));
+        foreach (var option in ModeOptions)
+            option.RefreshLocalization();
         Changed(nameof(FixedModeText));
     }
     /// <summary>Reads a validated setting, ignoring the PWM text in automatic mode.</summary>

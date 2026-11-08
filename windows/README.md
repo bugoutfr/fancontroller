@@ -69,7 +69,7 @@ Publishing is unpackaged, self-contained .NET and Windows App SDK. Distribute th
 1. Flash the ESP32 firmware described in [../esp32/README.md](../esp32/README.md). Enable Bluetooth in Windows.
 2. On first pairing, start the ESP32 normally and hold **BOOT for 2 seconds**, then release. Within 60 seconds, use **Search**, select `ESP32-FanController`, then **Connect / pair**.
 3. The client subscribes to BLE notifications before reading configuration and status. It does not write settings during connection. It shows temperatures, sensor faults/safety state, four fan RPM readings, PWM, operating modes, boost, and PWM output state.
-4. Edit both temperature profiles and each fan's automatic/fixed mode. A profile requires 2–8 points, temperatures strictly increasing from −20 to 120 °C, and PWM from 0–100% non-decreasing. Fixed PWM fields are ignored in automatic mode. Firmware safety overrides remain active.
+4. Edit both temperature profiles and each fan's automatic/fixed mode. Mode selectors display the current setting on first opening; changing the UI language updates their labels without replacing the choices. A profile requires 2–8 points, temperatures strictly increasing from −20 to 120 °C, and PWM from 0–100% non-decreasing. Fixed PWM fields are ignored in automatic mode. Firmware safety overrides remain active.
 5. **Apply to RAM** changes behavior immediately. **Save to ESP32** persists the current RAM settings in NVS across restarts. These are separate operations.
 6. **Discard changes** restores the last configuration read from the ESP32 without writing over BLE.
 

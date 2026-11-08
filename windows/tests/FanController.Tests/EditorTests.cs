@@ -251,4 +251,28 @@ public sealed class EditorTests
         fan.ModeIndex = -1;
         Assert.Throws<ArgumentException>(() => fan.Read());
     }
+
+    [Theory]
+    [InlineData("auto", 0, "Automatic")]
+    [InlineData("fixed", 1, "Fixed")]
+    public void FanModeOptionsAreAvailableBeforeFirstDisplay(string mode, int index, string label)
+    {
+        var fan = new FanEditor(3, new(mode, 25));
+        Assert.Equal(new[] { "Automatic", "Fixed" }, fan.ModeOptions.Select(option => option.Text));
+        Assert.Equal(index, fan.ModeIndex);
+        var options = fan.ModeOptions;
+        var selected = options[index];
+        Assert.Equal(label, selected.Text);
+
+        var changed = new List<string?>();
+        selected.PropertyChanged += (_, args) => changed.Add(args.PropertyName);
+        fan.RefreshLocalization();
+
+        Assert.Contains(nameof(FanModeOption.Text), changed);
+        Assert.Same(options, fan.ModeOptions);
+        Assert.Same(selected, fan.ModeOptions[index]);
+        Assert.Equal(index, fan.ModeIndex);
+        Assert.Equal(label, fan.ModeOptions[fan.ModeIndex].Text);
+        Assert.Equal(new FanSetting(mode, index == 1 ? 25 : 0), fan.Read());
+    }
 }
