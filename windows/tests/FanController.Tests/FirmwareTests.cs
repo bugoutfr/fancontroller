@@ -8,6 +8,11 @@ namespace FanController.Tests;
 
 public sealed class FirmwareTests : IDisposable
 {
+    private sealed class TransferProgress(Action<FirmwareTransferProgress> report) : IProgress<FirmwareTransferProgress>
+    {
+        public void Report(FirmwareTransferProgress value) => report(value);
+    }
+
     private readonly string _path = Path.Combine(Path.GetTempPath(), $"FanController-ota-{Guid.NewGuid():N}.bin");
 
     internal static byte[] ImageBytes(int length = 320)
@@ -110,11 +115,12 @@ public sealed class FirmwareTests : IDisposable
         var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var confirmation = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         var progress = new List<double>();
+        var transfer = new List<FirmwareTransferProgress>();
         var update = service.UpdateFirmwareAsync(transport, image, new InlineProgress(progress.Add), async ct =>
         {
             entered.SetResult();
             return await confirmation.Task.WaitAsync(ct);
-        }, CancellationToken.None);
+        }, CancellationToken.None, new TransferProgress(transfer.Add));
         var polling = service.StatusAsync();
         await BeginAsync(transport, image);
         await ReplyAsync(transport, "ota_finish", new
@@ -131,15 +137,32 @@ public sealed class FirmwareTests : IDisposable
         Assert.Equal(image.Bytes.ToArray(), transport.FirmwareWrites.SelectMany(x => x.Bytes).ToArray());
         Assert.Equal(0, progress[0]);
         Assert.Equal(100, progress[^1]);
+        Assert.Equal(0u, transfer[0].AcknowledgedBytes);
+        Assert.Equal(TimeSpan.Zero, transfer[0].Elapsed);
+        Assert.Equal((uint)image.Bytes.Length, transfer[^1].AcknowledgedBytes);
+        Assert.All(transfer, value => Assert.Equal(image.Bytes.Length, value.TotalBytes));
+        Assert.Equal(transport.FirmwareWrites.Count + 1, transfer.Count);
+        Assert.True(transfer[^1].Elapsed > TimeSpan.Zero);
+        Assert.True(transfer[^1].KibibytesPerSecond > 0);
+        var completedTransfer = transfer[^1];
         confirmation.SetResult(activate);
         await ReplyAsync(transport, lastCommand, new
         {
         });
         Assert.Equal(activate, await update);
+        Assert.Same(completedTransfer, transfer[^1]);
         Assert.Equal("get_status", (await transport.NextAsync()).GetProperty("cmd").GetString());
         ControllerTestData.ReplyStatus(transport);
         await polling;
         Assert.True(session.IsValid);
+    }
+
+    [Fact]
+    public void ThroughputUsesAcknowledgedBytesAndBinaryKilobytes()
+    {
+        Assert.Equal(0, new FirmwareTransferProgress(0, 4096, TimeSpan.Zero).KibibytesPerSecond);
+        Assert.Equal(2, new FirmwareTransferProgress(2048, 4096, TimeSpan.FromSeconds(1)).KibibytesPerSecond);
+        Assert.Equal(1, new FirmwareTransferProgress(2048, 4096, TimeSpan.FromSeconds(2)).KibibytesPerSecond);
     }
 
     [Fact]

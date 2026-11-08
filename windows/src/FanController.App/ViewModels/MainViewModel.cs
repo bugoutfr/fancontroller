@@ -24,6 +24,35 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
     private Task<bool>? _firmwareUpdate;
     private bool _firmwareUpdating;
     private double _firmwareProgress;
+    private TimeSpan _firmwareElapsed;
+    private double _firmwareRate;
+    private uint _firmwareAcknowledgedBytes;
+    private readonly System.Diagnostics.Stopwatch _firmwareClock = new();
+
+    /// <summary>Localized binary upload duration and mean acknowledged throughput.</summary>
+    public string FirmwareTransferDetails => Localizer.Format("Ota.TransferDetails",
+        "Upload: {0:0.0} s • mean throughput: {1:0.00} KiB/s",
+        _firmwareElapsed.TotalSeconds, _firmwareRate);
+
+    private void RefreshFirmwareTransfer(TimeSpan elapsed)
+    {
+        _firmwareElapsed = elapsed;
+        _firmwareRate = elapsed.TotalSeconds > 0
+            ? _firmwareAcknowledgedBytes / 1024.0 / elapsed.TotalSeconds : 0;
+        Changed(nameof(FirmwareTransferDetails));
+    }
+
+    private async Task RefreshUploadTimerAsync(CancellationToken ct)
+    {
+        using var timer = new PeriodicTimer(TimeSpan.FromMilliseconds(250));
+        try
+        {
+            while (await timer.WaitForNextTickAsync(ct))
+                if (_firmwareClock.IsRunning)
+                    RefreshFirmwareTransfer(_firmwareClock.Elapsed);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { }
+    }
     private CancellationTokenSource? _tachCts;
     private Task? _tachCapture;
     private bool _tachCapturing;
@@ -192,11 +221,27 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         FirmwareUpdating = true;
         Busy = true;
         FirmwareProgress = 0;
+        _firmwareClock.Reset();
+        _firmwareAcknowledgedBytes = 0;
+        RefreshFirmwareTransfer(TimeSpan.Zero);
+        using var timerLifetime = CancellationTokenSource.CreateLinkedTokenSource(cancellation.Token);
+        var timerTask = RefreshUploadTimerAsync(timerLifetime.Token);
         Error = "";
         SetFirmwareMessage("Ota.Transferring", "Transferring firmware; polling is suspended. Do not remove power.");
         try
         {
             var progress = new Progress<double>(value => FirmwareProgress = value);
+            var transferProgress = new Progress<FirmwareTransferProgress>(value =>
+            {
+                if (_firmwareCts != cancellation)
+                    return;
+                if (value.AcknowledgedBytes == 0)
+                    _firmwareClock.Restart();
+                _firmwareAcknowledgedBytes = value.AcknowledgedBytes;
+                if (value.AcknowledgedBytes == value.TotalBytes)
+                    _firmwareClock.Stop();
+                RefreshFirmwareTransfer(value.Elapsed);
+            });
             var activated = await _connection.UpdateFirmwareAsync(path, progress, async ct =>
             {
                 Dispatch(() => SetFirmwareMessage("Ota.Validated", "Firmware validated; waiting for activation confirmation."));
@@ -204,7 +249,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
                 if (activate)
                     Dispatch(() => SetFirmwareMessage("Ota.Restarting", "Activation requested; reconnecting to verify the running firmware."));
                 return activate;
-            }, cancellation.Token);
+            }, cancellation.Token, transferProgress);
             SetFirmwareMessage(activated ? "Ota.Success" : "Ota.Discarded",
                 activated ? "Restart complete: the running firmware image was verified." : "Firmware discarded without activation or restart.");
             return activated;
@@ -222,6 +267,13 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         }
         finally
         {
+            if (_firmwareClock.IsRunning)
+            {
+                _firmwareClock.Stop();
+                RefreshFirmwareTransfer(_firmwareClock.Elapsed);
+            }
+            timerLifetime.Cancel();
+            await timerTask;
             _firmwareCts = null;
             FirmwareUpdating = false;
             Busy = false;
@@ -542,6 +594,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         Changed(nameof(ConfigurationMessage));
         Changed(nameof(Firmware));
         Changed(nameof(FirmwareMessage));
+        Changed(nameof(FirmwareTransferDetails));
         Changed(nameof(TachMessage));
         Changed(nameof(ConnectionLabel));
         Changed(nameof(Message));

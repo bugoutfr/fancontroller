@@ -88,23 +88,6 @@
                         </ItemsControl>
                         <TextBlock loc:Localizer.Key="DashboardOfflineNote" Text="Values remain visible after a disconnect, but are no longer current. The ESP32 continues regulating independently."
                                    TextWrapping="Wrap" Foreground="#AABBD2"/>
-                        <Border Style="{StaticResource Card}">
-                            <StackPanel Spacing="10">
-                                <TextBlock loc:Localizer.Key="TachHeading" Text="TACH diagnostics over Bluetooth" FontSize="22" FontWeight="SemiBold"/>
-                                <TextBlock Text="{Binding TachMessage}" TextWrapping="Wrap"/>
-                                <StackPanel Orientation="Horizontal" Spacing="12">
-                                    <Button loc:Localizer.Key="TachCapture30" Content="Capture 30 s" Click="TachCapture30Clicked" IsEnabled="{Binding CanCaptureTach}" AutomationProperties.AutomationId="TachCapture30"/>
-                                    <Button loc:Localizer.Key="TachCapture60" Content="Capture 60 s" Click="TachCapture60Clicked" IsEnabled="{Binding CanCaptureTach}" AutomationProperties.AutomationId="TachCapture60"/>
-                                    <Button loc:Localizer.Key="TachCancel" Content="Cancel" Click="TachCancelClicked" IsEnabled="{Binding TachCapturing}"/>
-                                    <Button loc:Localizer.Key="TachExport" Content="Export CSV" Click="TachExportClicked" IsEnabled="{Binding CanExportTach}" AutomationProperties.AutomationId="TachExport"/>
-                                </StackPanel>
-                                <ProgressBar Minimum="0" Maximum="{Binding TachDuration}" Value="{Binding TachSeconds}"/>
-                                <StackPanel Orientation="Horizontal" Spacing="6">
-                                    <TextBlock Text="{Binding TachSeconds}"/>
-                                    <TextBlock loc:Localizer.Key="TachSeconds" Text="seconds captured"/>
-                                </StackPanel>
-                            </StackPanel>
-                        </Border>
                     </StackPanel>
                 </ScrollViewer>
             </PivotItem>
@@ -232,6 +215,8 @@
                                 <TextBlock loc:Localizer.Key="OtaWarning" Text="Select a trusted application .bin file, not a merged flash image. Save settings first: unsaved RAM changes will be lost on restart. SHA-256 checks integrity, not the publisher. Keep the controller powered."
                                            TextWrapping="Wrap" Foreground="#AABBD2"/>
                                 <TextBlock Text="{Binding FirmwareMessage}" TextWrapping="Wrap"/>
+                                <TextBlock Text="{Binding FirmwareTransferDetails}" Foreground="#AABBD2" TextWrapping="Wrap"
+                                           AutomationProperties.AutomationId="FirmwareTransferDetails"/>
                                 <ProgressBar Minimum="0" Maximum="100" Value="{Binding FirmwareProgress}"
                                              Visibility="{Binding FirmwareUpdating, Converter={StaticResource BooleanVisibility}}"/>
                                 <StackPanel Orientation="Horizontal" Spacing="12">
@@ -239,6 +224,23 @@
                                             IsEnabled="{Binding CanUpdateFirmware}" Click="FirmwareUpdateClicked"/>
                                     <Button loc:Localizer.Key="OtaCancel" Content="Cancel update" Click="FirmwareCancelClicked"
                                             Visibility="{Binding FirmwareUpdating, Converter={StaticResource BooleanVisibility}}"/>
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
+                        <Border Style="{StaticResource Card}">
+                            <StackPanel Spacing="10">
+                                <TextBlock loc:Localizer.Key="TachHeading" Text="TACH diagnostics over Bluetooth" FontSize="22" FontWeight="SemiBold"/>
+                                <TextBlock Text="{Binding TachMessage}" TextWrapping="Wrap"/>
+                                <StackPanel Orientation="Horizontal" Spacing="12">
+                                    <Button loc:Localizer.Key="TachCapture30" Content="Capture 30 s" Click="TachCapture30Clicked" IsEnabled="{Binding CanCaptureTach}" AutomationProperties.AutomationId="TachCapture30"/>
+                                    <Button loc:Localizer.Key="TachCapture60" Content="Capture 60 s" Click="TachCapture60Clicked" IsEnabled="{Binding CanCaptureTach}" AutomationProperties.AutomationId="TachCapture60"/>
+                                    <Button loc:Localizer.Key="TachCancel" Content="Cancel" Click="TachCancelClicked" IsEnabled="{Binding TachCapturing}"/>
+                                    <Button loc:Localizer.Key="TachExport" Content="Export CSV" Click="TachExportClicked" IsEnabled="{Binding CanExportTach}" AutomationProperties.AutomationId="TachExport"/>
+                                </StackPanel>
+                                <ProgressBar Minimum="0" Maximum="{Binding TachDuration}" Value="{Binding TachSeconds}"/>
+                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                    <TextBlock Text="{Binding TachSeconds}"/>
+                                    <TextBlock loc:Localizer.Key="TachSeconds" Text="seconds captured"/>
                                 </StackPanel>
                             </StackPanel>
                         </Border>

@@ -110,7 +110,7 @@ void testCommandsRegulationAndStorage() {
     response = status(processor);
     assert(response["data"]["ble_available"] == true);
     assert(response["data"]["ble_status"] == "ready");
-    assert(response["data"]["firmware_version"] == "1.4.5");
+    assert(response["data"]["firmware_version"] == "1.4.6");
     assert(response["data"]["ble_rssi_dbm"].isNull());
     for (const int8_t rssi : {int8_t(-127), int8_t(-62), int8_t(0), int8_t(20)}) {
         const String wire = processor.process(R"({"cmd":"get_status"})", &rssi);
@@ -567,6 +567,58 @@ void testCorrectedPeriods() {
     split.add(25000);
     assert(split.window.mergedPairs == 1 && split.window.intervals == 2);
     assert(split.window.spanUs == 50000);
+
+    for (unsigned pairs = 2; pairs <= 4; ++pairs) {
+        Filter consecutive;
+        for (unsigned i = 0; i < 6; ++i) {
+            consecutive.add(27300);
+        }
+        consecutive.window = {};
+        for (unsigned i = 0; i < pairs; ++i) {
+            consecutive.add(14000);
+            consecutive.add(13300);
+        }
+        assert(consecutive.window.intervals == 0);
+        consecutive.window = {};
+        consecutive.add(27300);
+        assert(consecutive.window.mergedPairs == pairs);
+        assert(consecutive.window.intervals == pairs + 1);
+        assert(consecutive.window.spanUs == uint64_t(pairs + 1) * 27300);
+    }
+
+    Filter captured;
+    for (unsigned i = 0; i < 6; ++i) {
+        captured.add(27300);
+    }
+    captured.window = {};
+    for (uint32_t interval : {14026U, 13407U, 13631U, 13528U, 27441U}) {
+        captured.add(interval);
+    }
+    assert(captured.window.mergedPairs == 2 && captured.window.intervals == 3);
+    assert(captured.window.spanUs == 82033);
+
+    Filter overLimit;
+    for (unsigned i = 0; i < 6; ++i) {
+        overLimit.add(25000);
+    }
+    overLimit.window = {};
+    for (unsigned i = 0; i < 10; ++i) {
+        overLimit.add(12500);
+    }
+    overLimit.add(25000);
+    assert(overLimit.window.mergedPairs == 0 && overLimit.window.intervals == 11);
+    assert(overLimit.window.spanUs == 150000 && overLimit.pendingCount == 0);
+
+    Filter invalidRun;
+    for (unsigned i = 0; i < 6; ++i) {
+        invalidRun.add(25000);
+    }
+    invalidRun.window = {};
+    for (uint32_t interval : {12500U, 12500U, 8000U, 8000U, 25000U}) {
+        invalidRun.add(interval);
+    }
+    assert(invalidRun.window.mergedPairs == 0 && invalidRun.window.intervals == 5);
+    assert(invalidRun.window.spanUs == 66000);
 
     Filter acceleration;
     for (unsigned i = 0; i < 6; ++i) {

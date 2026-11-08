@@ -35,7 +35,8 @@ public:
         uint32_t recentUs[5]{};
         size_t recentCount = 0;
         size_t recentNext = 0;
-        uint32_t pendingUs[2]{};
+        static constexpr size_t MaxPendingIntervals = 8;
+        uint32_t pendingUs[MaxPendingIntervals]{};
         size_t pendingCount = 0;
         uint32_t referenceUs = 0;
         CorrectedPeriods window;
@@ -58,30 +59,40 @@ public:
                    intervalUs * 10 <= uint64_t(reference) * 11;
         }
 
+        void IRAM_ATTR flushPending() {
+            for (size_t i = 0; i < pendingCount; ++i) {
+                accept(pendingUs[i]);
+            }
+            pendingCount = 0;
+        }
+
         void IRAM_ATTR add(uint32_t intervalUs) {
-            if (pendingCount == 2) {
-                const uint64_t sum = uint64_t(pendingUs[0]) + pendingUs[1];
+            if (pendingCount != 0 && pendingCount % 2 == 0) {
                 if (near(intervalUs, referenceUs)) {
-                    accept(static_cast<uint32_t>(sum));
-                    ++window.mergedPairs;
+                    for (size_t i = 0; i < pendingCount; i += 2) {
+                        accept(pendingUs[i] + pendingUs[i + 1]);
+                        ++window.mergedPairs;
+                    }
+                    pendingCount = 0;
+                } else if (pendingCount < MaxPendingIntervals &&
+                           uint64_t(intervalUs) * 4 < uint64_t(referenceUs) * 3) {
+                    pendingUs[pendingCount++] = intervalUs;
+                    return;
                 } else {
-                    accept(pendingUs[0]);
-                    accept(pendingUs[1]);
+                    flushPending();
                 }
-                pendingCount = 0;
                 accept(intervalUs);
                 return;
             }
-            if (pendingCount == 1) {
+            if (pendingCount != 0) {
+                const uint32_t firstUs = pendingUs[pendingCount - 1];
                 if (uint64_t(intervalUs) * 4 < uint64_t(referenceUs) * 3 &&
-                    uint64_t(pendingUs[0]) + intervalUs <= UINT32_MAX &&
-                    near(uint64_t(pendingUs[0]) + intervalUs, referenceUs)) {
-                    pendingUs[1] = intervalUs;
-                    pendingCount = 2;
+                    uint64_t(firstUs) + intervalUs <= UINT32_MAX &&
+                    near(uint64_t(firstUs) + intervalUs, referenceUs)) {
+                    pendingUs[pendingCount++] = intervalUs;
                     return;
                 }
-                accept(pendingUs[0]);
-                pendingCount = 0;
+                flushPending();
                 accept(intervalUs);
                 return;
             }

@@ -203,9 +203,11 @@ public sealed class ControllerConnection(
     /// <param name="progress">Acknowledged transfer percentage.</param>
     /// <param name="confirmActivation">Confirmation after staging; must honor cancellation during shutdown.</param>
     /// <param name="ct">Cancels loading, transfer, confirmation or reconnection.</param>
+    /// <param name="transferProgress">Optional upload-only timing and acknowledged bytes.</param>
     /// <returns>True when the new running image was verified; false when activation was declined.</returns>
     public async Task<bool> UpdateFirmwareAsync(string path, IProgress<double>? progress,
-        Func<CancellationToken, Task<bool>> confirmActivation, CancellationToken ct = default)
+        Func<CancellationToken, Task<bool>> confirmActivation, CancellationToken ct = default,
+        IProgress<FirmwareTransferProgress>? transferProgress = null)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         using var lifetime = CancellationTokenSource.CreateLinkedTokenSource(ct, _lifetime.Token);
@@ -218,7 +220,7 @@ public sealed class ControllerConnection(
                 throw new IOException("Install OTA-capable firmware over USB first (1.2.0 or later).");
             using var transfer = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token, connection.Lifetime.Token);
             var activated = await connection.Controller.UpdateFirmwareAsync(ota, image, progress,
-                confirmActivation, transfer.Token).ConfigureAwait(false);
+                confirmActivation, transfer.Token, transferProgress).ConfigureAwait(false);
             if (!activated)
                 return false;
             _expectedFirmware = (connection.Address, image.ImageSha256);

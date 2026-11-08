@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <root>
+  <data name="Ota.TransferDetails" xml:space="preserve"><value>Envoi : {0:0.0} s • débit moyen : {1:0.00} Kio/s</value></data>
   <data name="TachHeading.Text" xml:space="preserve"><value>Diagnostic TACH par Bluetooth</value></data>
   <data name="TachCapture30.Content" xml:space="preserve"><value>Capturer 30 s</value></data>
   <data name="TachCapture60.Content" xml:space="preserve"><value>Capturer 60 s</value></data>

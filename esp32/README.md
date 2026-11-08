@@ -55,7 +55,7 @@ now share a 512-byte constant, and the stored bytes are checked before notificat
 Version 1.4.4 can time out on initial configuration reads; this is not a pairing failure.
 
 Since firmware **1.4.1**, diagnostics are available over the existing encrypted BLE connection, without USB. In the
-updated Windows app's Dashboard, select **Capture 30 s** or **Capture 60 s**, then **Export CSV**.
+updated Windows app's Settings, select **Capture 30 s** or **Capture 60 s**, then **Export CSV**.
 Install this firmware using the existing OTA workflow if USB power isolation is unknown.
 Do not connect powered USB and VIN simultaneously unless the board's isolation is confirmed.
 
@@ -138,6 +138,12 @@ sustained acceleration being mistaken for added edges. Candidates and their conf
 can cross update windows; up to two intervals remain pending until the next edge. Resolved
 periods are attributed to their resolution window, so their count need not match raw
 interval count in that window. An empty raw window resets the reference and pending state.
+
+Since **1.4.6**, up to four consecutive short pairs can be held pending. Every pair's
+sum must meet the same reference tolerance, and a normal following interval confirms the
+whole run. A mismatching interval or a fifth pair causes all pending intervals to be kept
+as raw periods, without merging. This bounds the delay and preserves sustained acceleration;
+up to eight intervals can now span measurement windows. The raw diagnostics remain unchanged.
 
 Displayed RPM averages the resolved periods' durations, without a moving-average display
 filter. When no nonzero resolved duration is available (startup, no edges, or pending data),

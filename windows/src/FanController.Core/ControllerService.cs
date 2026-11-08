@@ -195,9 +195,11 @@ public sealed class ControllerService(ProtocolSession session) : IDisposable
     /// <param name="progress">Receives the percentage of bytes acknowledged in flash.</param>
     /// <param name="confirmActivation">Called after validation; false discards the image without restarting.</param>
     /// <param name="ct">Cancels the transfer or confirmation; ambiguous writes invalidate the connection.</param>
+    /// <param name="transferProgress">Optional binary upload timing and acknowledged byte measurements.</param>
     /// <returns>True only when activation was acknowledged; restart verification remains the owner's responsibility.</returns>
     public Task<bool> UpdateFirmwareAsync(IFirmwareTransport transport, FirmwareImage image,
-            IProgress<double>? progress, Func<CancellationToken, Task<bool>> confirmActivation, CancellationToken ct) =>
+            IProgress<double>? progress, Func<CancellationToken, Task<bool>> confirmActivation, CancellationToken ct,
+            IProgress<FirmwareTransferProgress>? transferProgress = null) =>
             Run(async () =>
             {
                 var info = (await session.RequestAsync(new
@@ -217,6 +219,8 @@ public sealed class ControllerService(ProtocolSession session) : IDisposable
                     throw new InvalidDataException("OTA transfer did not start at offset zero.");
                 uint offset = 0;
                 progress?.Report(0);
+                var uploadClock = System.Diagnostics.Stopwatch.StartNew();
+                transferProgress?.Report(new(0, image.Bytes.Length, TimeSpan.Zero));
                 while (offset < image.Bytes.Length)
                 {
                     var count = Math.Min(transport.FirmwareBlockSize, image.Bytes.Length - (int)offset);
@@ -225,6 +229,7 @@ public sealed class ControllerService(ProtocolSession session) : IDisposable
                     if (accepted != offset + count)
                         throw new InvalidDataException("OTA acknowledgment offset is invalid.");
                     offset = accepted;
+                    transferProgress?.Report(new(offset, image.Bytes.Length, uploadClock.Elapsed));
                     progress?.Report(100.0 * offset / image.Bytes.Length);
                 }
                 var finish = (await session.RequestAsync(new

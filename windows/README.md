@@ -77,7 +77,7 @@ A multi-command update is not atomic. If the link fails, some changes may have t
 
 ## TACH diagnostics without USB
 
-The Dashboard includes **Capture 30 s**, **Capture 60 s**, cancellation, and **Export CSV**.
+Settings includes **Capture 30 s**, **Capture 60 s**, cancellation, and **Export CSV**, below firmware updates.
 Install the diagnostic ESP32 firmware over the existing OTA connection first. Older firmware
 remains usable for control; capture is disabled unless `get_status` advertises
 `tach_diagnostics_supported: true`. No serial port or simultaneous USB/VIN power is required.
@@ -120,6 +120,10 @@ An overwritten cursor is explicitly distinguished from a backwards sequence afte
 Capture failure invalidates the BLE session by design; this disconnection alone does not
 indicate an ESP32 crash.
 
+Firmware **1.4.6** extends correction to runs of up to four consecutive short pairs,
+confirmed by the next normal interval. Invalid or longer runs remain unmerged. CSV fields
+and raw measurements are unchanged; no application update is needed for this extension.
+
 ## Firmware update over Bluetooth
 
 Install firmware **1.2.0 or later once over USB**, including its OTA-compatible partition table.
@@ -140,6 +144,11 @@ the first update from 1.3.0 uses its existing settings. The firmware serial log 
 MTU and verified transfer throughput, excluding initial erase, confirmation and restart.
 
 Polling and setting commands are suspended during the operation. Progress describes bytes acknowledged, not successful activation.
+The upload panel shows elapsed binary transfer seconds and mean throughput in KiB/s
+(Kio/s in French), based only on bytes acknowledged by the ESP32. Timing starts after
+`ota_begin`, updates during upload, and freezes after the final block. It excludes local
+file loading, initial flash preparation, validation, confirmation, and restart/reconnection.
+On interruption, the last elapsed duration and acknowledged throughput remain visible.
 After validation, a separate confirmation offers **Activate and restart** or **Discard firmware**.
 Save settings beforehand: unsaved RAM settings and uncommitted drafts are not automatically written.
 Drafts are retained locally, but RAM settings are lost on restart.
